@@ -1,0 +1,31 @@
+[changelog]
+header = "# Changelog\n"
+body = '''
+## {{ version | default(value="Unreleased") }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% if commits %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}- {{ commit.message | split(pat="\n") | first }} ({{ commit.id | truncate(length=7, end="") }})
+{% endfor %}
+{% endfor %}
+{% else %}
+- No changes recorded.
+{% endif %}
+'''
+footer = "\n"
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+topics = []
+commit_parsers = [
+    { message = "^(feat|feature)(\\(.+\\))?!?:", group = "Features" },
+    { message = "^fix(\\(.+\\))?!?:", group = "Fixes" },
+    { message = "^docs(\\(.+\\))?!?:", group = "Documentation" },
+    { message = "^chore(\\(.+\\))?!?:", group = "Misc" },
+    { message = "^refactor(\\(.+\\))?!?:", group = "Refactors" },
+    { message = "^perf(\\(.+\\))?!?:", group = "Performance" },
+    { message = "^test(\\(.+\\))?!?:", group = "Testing" },
+]
+
+tag_pattern = "v[0-9]*"

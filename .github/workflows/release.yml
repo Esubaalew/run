@@ -1,0 +1,212 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+            binary: run
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: tar.gz
+            binary: run
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+            binary: run
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            binary: run.exe
+    env:
+      ARTIFACT_NAME: run-${{ matrix.target }}-${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --locked --release --target ${{ matrix.target }}
+
+      - name: Install cargo-deb
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo install cargo-deb --locked
+
+      - name: Build Debian package
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          cargo deb --target ${{ matrix.target }}
+          mkdir -p artifacts
+          DEB_PATH=$(find target/${{ matrix.target }}/debian -maxdepth 1 -name "*.deb" | head -n 1)
+          cp "$DEB_PATH" "artifacts/$(basename "$DEB_PATH")"
+
+      - name: Prepare archive (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        run: |
+          mkdir -p artifacts/${ARTIFACT_NAME}
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} artifacts/${ARTIFACT_NAME}/
+          cp README.md LICENSE artifacts/${ARTIFACT_NAME}/
+          cp scripts/install.sh artifacts/${ARTIFACT_NAME}/
+          chmod +x artifacts/${ARTIFACT_NAME}/install.sh
+          tar -czf artifacts/${ARTIFACT_NAME}.tar.gz -C artifacts ${ARTIFACT_NAME}
+
+      - name: Prepare archive (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "artifacts/${env:ARTIFACT_NAME}" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "artifacts/${env:ARTIFACT_NAME}/${{ matrix.binary }}"
+          Copy-Item "README.md" "artifacts/${env:ARTIFACT_NAME}/README.md"
+          Copy-Item "LICENSE" "artifacts/${env:ARTIFACT_NAME}/LICENSE"
+          Compress-Archive -Path "artifacts/${env:ARTIFACT_NAME}/*" -DestinationPath "artifacts/${env:ARTIFACT_NAME}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: artifacts/${{ env.ARTIFACT_NAME }}.${{ matrix.archive }}
+
+      - name: Upload Debian package
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-${{ github.ref_name }}-deb
+          path: artifacts/run_*.deb
+
+  publish-crate:
+    name: Publish crate to crates.io
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish crate to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --locked
+
+  release:
+    name: Publish release
+    needs:
+      - build
+      - publish-crate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Install manifest tooling
+        run: sudo apt-get update && sudo apt-get install -y gettext
+
+      - name: Install git-cliff
+        run: |
+          set -euo pipefail
+          CLIFF_VERSION="1.4.0"
+          ARCHIVE="git-cliff-${CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSL "https://github.com/orhun/git-cliff/releases/download/v${CLIFF_VERSION}/${ARCHIVE}" -o git-cliff.tar.gz
+          tar -xf git-cliff.tar.gz
+          EXTRACT_DIR="git-cliff-${CLIFF_VERSION}"
+          sudo install -m 0755 "${EXTRACT_DIR}/git-cliff" /usr/local/bin/git-cliff
+          rm -rf git-cliff.tar.gz "${EXTRACT_DIR}"
+
+      - name: Flatten downloaded artifacts
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for dir in dist/*; do
+            if [ -d "$dir" ]; then
+              mv "$dir"/* dist/
+              rmdir "$dir"
+            fi
+          done
+
+      - name: Generate package manager manifests
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          MAC_TAR_INTEL=$(find dist -maxdepth 1 -name "run-x86_64-apple-darwin-*.tar.gz" -print -quit)
+          MAC_TAR_ARM=$(find dist -maxdepth 1 -name "run-aarch64-apple-darwin-*.tar.gz" -print -quit)
+          LINUX_TAR=$(find dist -maxdepth 1 -name "run-*-unknown-linux-gnu-*.tar.gz" -print -quit)
+          WINDOWS_ZIP=$(find dist -maxdepth 1 -name "run-*-pc-windows-msvc-*.zip" -print -quit)
+          DEB_FILE=$(find dist -maxdepth 1 -name "*.deb" -print -quit)
+
+          if [ -z "$MAC_TAR_INTEL" ] || [ -z "$MAC_TAR_ARM" ] || [ -z "$WINDOWS_ZIP" ]; then
+            echo "Missing expected release artifacts" >&2
+            exit 1
+          fi
+
+          MAC_INTEL_SHA=$(shasum -a 256 "$MAC_TAR_INTEL" | awk '{print $1}')
+          MAC_ARM_SHA=$(shasum -a 256 "$MAC_TAR_ARM" | awk '{print $1}')
+          WINDOWS_SHA=$(sha256sum "$WINDOWS_ZIP" | awk '{print $1}')
+          LINUX_SHA=""
+          if [ -n "$LINUX_TAR" ]; then
+            LINUX_SHA=$(sha256sum "$LINUX_TAR" | awk '{print $1}')
+          fi
+          DEB_SHA=""
+          if [ -n "$DEB_FILE" ]; then
+            DEB_SHA=$(sha256sum "$DEB_FILE" | awk '{print $1}')
+          fi
+
+          REPO="${GITHUB_REPOSITORY}"
+          MAC_INTEL_URL="https://github.com/${REPO}/releases/download/${GITHUB_REF_NAME}/$(basename "$MAC_TAR_INTEL")"
+          MAC_ARM_URL="https://github.com/${REPO}/releases/download/${GITHUB_REF_NAME}/$(basename "$MAC_TAR_ARM")"
+          WINDOWS_URL="https://github.com/${REPO}/releases/download/${GITHUB_REF_NAME}/$(basename "$WINDOWS_ZIP")"
+
+          export VERSION REPO MAC_INTEL_URL MAC_INTEL_SHA MAC_ARM_URL MAC_ARM_SHA WINDOWS_URL WINDOWS_SHA
+          export WINDOWS_ASSET="$(basename "$WINDOWS_ZIP")"
+          envsubst '${VERSION} ${REPO} ${MAC_INTEL_URL} ${MAC_INTEL_SHA} ${MAC_ARM_URL} ${MAC_ARM_SHA} ${WINDOWS_URL} ${WINDOWS_SHA} ${WINDOWS_ASSET}' < packaging/homebrew/run.rb.tpl > dist/homebrew-run.rb
+          envsubst '${VERSION} ${REPO} ${WINDOWS_URL} ${WINDOWS_SHA} ${WINDOWS_ASSET}' < packaging/scoop/run.json.tpl > dist/run-scoop.json
+
+          printf '%s  %s\n' "$MAC_INTEL_SHA" "$(basename "$MAC_TAR_INTEL")" > dist/run-macos-intel.sha256
+          printf '%s  %s\n' "$MAC_ARM_SHA" "$(basename "$MAC_TAR_ARM")" > dist/run-macos-arm.sha256
+
+          if [ -n "$DEB_FILE" ] && [ -n "$DEB_SHA" ]; then
+            printf '%s  %s\n' "$DEB_SHA" "$(basename "$DEB_FILE")" > dist/run-deb.sha256
+          fi
+
+          if [ -n "$LINUX_TAR" ] && [ -n "$LINUX_SHA" ]; then
+            printf '%s  %s\n' "$LINUX_SHA" "$(basename "$LINUX_TAR")" > dist/run-linux.sha256
+          fi
+
+      - name: Generate release changelog
+        run: |
+          git-cliff \
+            --config ./cliff.toml \
+            --tag ${GITHUB_REF_NAME} \
+            --strip header \
+            --output dist/CHANGELOG-${GITHUB_REF_NAME}.md
+
+      - name: Create GitHub release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          body_path: dist/CHANGELOG-${{ github.ref_name }}.md
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
