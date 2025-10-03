@@ -18,23 +18,22 @@
 <details>
 <summary><strong>Table of contents</strong></summary>
 
-- [✨ Highlights](#-highlights)
-- [🚀 Quickstart](#-quickstart)
-- [📦 Installation](#-installation)
-- [🧠 How it works](#-how-it-works)
-- [🌍 Supported languages](#-supported-languages)
-- [🧪 Examples](#-examples)
-- [🔁 REPL cheat sheet](#-repl-cheat-sheet)
-- [🧩 Extending run](#-extending-run)
+- [Highlights](#-highlights)
+- [Quickstart](#-quickstart)
+- [Installation](#-installation)
+- [How it works](#-how-it-works)
+- [Supported languages](#-supported-languages)
+- [Examples](#-examples)
+- [REPL cheat sheet](#-repl-cheat-sheet)
+- [Extending run](#-extending-run)
 - [Testing & quality](#testing--quality)
-- [📡 Release automation](#-release-automation)
 - [📄 License](#-license)
 
 </details>
 
 ---
 
-## ✨ Highlights
+## Here is what run means
 
 - **One command, many runtimes.** Switch between Python, Go, Rust, TypeScript, Zig, Haskell, and more without leaving the same shell session.
 - **Stateful REPLs.** Every engine keeps session history, understands `:reset`, `:load`, and language shortcuts (`:py`, `:go`, …), and auto-detects snippets when you want it to.
@@ -43,7 +42,7 @@
 - **Extensible by design.** Drop in a new `LanguageEngine` implementation and wire it into the registry to make `run` speak yet another language.
 - **Developer ergonomics.** Rich metadata (`run --version`), fast autocomplete-friendly subcommands, and examples for every supported runtime.
 
-## 🚀 Quickstart
+##  Quickstart
 
 ```bash
 # Show build metadata for the current binary
@@ -64,7 +63,7 @@ echo '{"name":"Ada"}' | run js --code "const data = JSON.parse(require('fs').rea
 
 Pro tip: `run` aliases the first positional argument, so `run py script.py` works just like `run --lang python script.py`.
 
-## 📦 Installation
+##  Installation
 
 All release assets are published on the [GitHub Releases](https://github.com/Esubaalew/run/releases) page, including macOS builds for both Apple Silicon (arm64) and Intel (x86_64). Pick the method that fits your platform:
 
@@ -86,7 +85,7 @@ cargo install run-kit
 brew install --formula https://github.com/Esubaalew/run/releases/latest/download/homebrew-run.rb
 ```
 
-> ℹ️ This formula is published as a standalone file on each release; it isn’t part of the default Homebrew taps. Installing by name (`brew install homebrew-run`) will fail—always point Homebrew to the release URL above (or download the file and run `brew install ./homebrew-run.rb`).
+>  This formula is published as a standalone file on each release; it isn’t part of the default Homebrew taps. Installing by name (`brew install homebrew-run`) will fail—always point Homebrew to the release URL above (or download the file and run `brew install ./homebrew-run.rb`).
 
 Once the latest release artifacts are published, Homebrew automatically selects the correct macOS binary for your CPU (Intel or Apple Silicon) based on this formula.
 
@@ -147,7 +146,7 @@ The project targets Rust 1.70+. Installing from crates.io gives you the same `ru
 
 </details>
 
-## 🧠 How it works
+##  How it works
 
 `run` shells out to real toolchains under the hood. Each `LanguageEngine` implements a small trait that knows how to:
 
@@ -170,7 +169,7 @@ This architecture keeps the core lightweight while making it easy to add new run
 
 Auto-detection heuristics consider file extensions and can fall back to the last language you used. Run `run :languages` inside the REPL to see the full list with availability checks.
 
-## 🧪 Examples
+##  Examples
 
 Real programs live under the [`examples/`](examples) tree—each language has a `hello` and a `progress` scenario. The headers document expected output so you can diff your toolchain.
 
@@ -182,7 +181,7 @@ run examples/python/counter.py
 
 Use these as smoke tests or as a starting point for sharing snippets with your team.
 
-## 🔁 REPL cheat sheet
+##  REPL cheat sheet
 
 | Command                    | Purpose                                      |
 | -------------------------- | -------------------------------------------- |
@@ -196,7 +195,7 @@ Use these as smoke tests or as a starting point for sharing snippets with your t
 
 Language-specific tips (persistence model, auto-print behavior, etc.) are summarised in the built-in `:help` prompt.
 
-## 🧩 Extending run
+##  Extending run
 
 1. Add a new file in `src/engine/` implementing the `LanguageEngine` trait.
 2. Register it inside `LanguageRegistry::bootstrap()` and provide aliases in `language::ALIASES`.
@@ -213,9 +212,7 @@ cargo test
 
 Tests will automatically skip engines if their toolchain is missing. For release parity, also run `cargo fmt`, `cargo clippy -- -D warnings`, and try a spot check via `run examples/python/counter.py`.
 
-## 📡 Release automation
 
-GitHub Actions builds signed binaries for macOS, Linux, and Windows, creates Homebrew/Scoop manifests, publishes Debian packages, and generates changelog entries with [git-cliff](https://github.com/orhun/git-cliff). Tagging `v*` is all it takes to cut a release.
 
 ## 📄 License
 
