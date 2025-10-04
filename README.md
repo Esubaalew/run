@@ -24,9 +24,7 @@
 - [How it works](#-how-it-works)
 - [Supported languages](#-supported-languages)
 - [Examples](#-examples)
-- [REPL cheat sheet](#-repl-cheat-sheet)
-- [Extending run](#-extending-run)
-- [Testing & quality](#testing--quality)
+- [REPL](#-repl-cheat-sheet)
 - [📄 License](#-license)
 
 </details>
