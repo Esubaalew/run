@@ -33,15 +33,6 @@
 
 ---
 
-## Here is what run means
-
-- **One command, many runtimes.** Switch between Python, Go, Rust, TypeScript, Zig, Haskell, and more without leaving the same shell session.
-- **Stateful REPLs.** Every engine keeps session history, understands `:reset`, `:load`, and language shortcuts (`:py`, `:go`, …), and auto-detects snippets when you want it to.
-- **Inline, files, or stdin.** Evaluate one-liners with `--code`, run files with detection heuristics, or pipe input from another process.
-- **Production-ready binaries.** Release workflow ships signed archives, Homebrew and Scoop manifests, plus Debian packages straight from CI.
-- **Extensible by design.** Drop in a new `LanguageEngine` implementation and wire it into the registry to make `run` speak yet another language.
-- **Developer ergonomics.** Rich metadata (`run --version`), fast autocomplete-friendly subcommands, and examples for every supported runtime.
-
 ##  Quickstart
 
 ```bash
@@ -61,7 +52,6 @@ run
 echo '{"name":"Ada"}' | run js --code "const data = JSON.parse(require('fs').readFileSync(0, 'utf8')); console.log(`hi ${data.name}`)"
 ```
 
-Pro tip: `run` aliases the first positional argument, so `run py script.py` works just like `run --lang python script.py`.
 
 ##  Installation
 
@@ -157,9 +147,9 @@ The project targets Rust 1.70+. Installing from crates.io gives you the same `ru
 
 This architecture keeps the core lightweight while making it easy to add new runtimes or swap implementations.
 
-## 🌍 Supported languages
+##  Supported languages
 
-`run` ships with 25+ batteries-included engines. Grouped by flavor:
+`run` supportes 25+ languages:
 
 | Category                  | Languages & aliases                                                                                                                                                                                    | Toolchain expectations                           |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
@@ -167,7 +157,7 @@ This architecture keeps the core lightweight while making it easy to add new run
 | **Web & typed scripting** | JavaScript (`js`, `node`), TypeScript (`ts`, `deno`), Dart (`dart`), Swift (`swift`), Kotlin (`kt`, `kotlin`)                                                                                          | `node`, `deno`, `dart`, `swift`, `kotlinc` + JRE |
 | **Systems & compiled**    | C (`c`), C++ (`cpp`, `cxx`), Rust (`rs`, `rust`), Go (`go`), Zig (`zig`), Nim (`nim`), Haskell (`hs`, `haskell`), Crystal (`cr`, `crystal`), C# (`cs`, `csharp`), Java (`java`), Julia (`jl`, `julia`) | Respective compiler / toolchain                  |
 
-Auto-detection heuristics consider file extensions and can fall back to the last language you used. Run `run :languages` inside the REPL to see the full list with availability checks.
+
 
 ##  Examples
 
@@ -179,9 +169,9 @@ run examples/typescript/progress.ts
 run examples/python/counter.py
 ```
 
-Use these as smoke tests or as a starting point for sharing snippets with your team.
 
-##  REPL cheat sheet
+##  REPL
+Being inside REPL we can use the ff commands
 
 | Command                    | Purpose                                      |
 | -------------------------- | -------------------------------------------- |
@@ -193,28 +183,12 @@ Use these as smoke tests or as a starting point for sharing snippets with your t
 | `:reset`                   | Clear the accumulated session state          |
 | `:exit` / `:quit`          | Leave the REPL                               |
 
-Language-specific tips (persistence model, auto-print behavior, etc.) are summarised in the built-in `:help` prompt.
-
-##  Extending run
-
-1. Add a new file in `src/engine/` implementing the `LanguageEngine` trait.
-2. Register it inside `LanguageRegistry::bootstrap()` and provide aliases in `language::ALIASES`.
-3. Add detection hints if the language benefits from extra heuristics.
-4. Document usage with new examples and include integration tests.
-
-Use the Python or Go engines as a template—they cover both scripting and compiled workflows.
-
-## Testing & quality
-
-```bash
-cargo test
-```
-
-Tests will automatically skip engines if their toolchain is missing. For release parity, also run `cargo fmt`, `cargo clippy -- -D warnings`, and try a spot check via `run examples/python/counter.py`.
 
 
 
-## 📄 License
+
+
+##  License
 
 Apache 2.0. See [LICENSE](LICENSE) for details.
 
