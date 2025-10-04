@@ -8,6 +8,7 @@
 	<a href="https://github.com/Esubaalew/run/actions/workflows/release.yml"><img src="https://github.com/Esubaalew/run/actions/workflows/release.yml/badge.svg" alt="Release pipeline" /></a>
 	<a href="https://github.com/Esubaalew/run/releases/latest"><img src="https://img.shields.io/github/v/release/Esubaalew/run?display_name=tag&sort=semver" alt="Latest release" /></a>
 	<a href="https://github.com/Esubaalew/run/releases"><img src="https://img.shields.io/github/downloads/Esubaalew/run/total.svg" alt="Downloads" /></a>
+	<a href="https://crates.io/crates/run-kit"><img src="https://img.shields.io/crates/v/run-kit.svg?label=crates.io&logo=rust" alt="crates.io" /></a>
 	<a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License" /></a>
 </p>
 
@@ -31,7 +32,7 @@
 
 ---
 
-##  Quickstart
+## Quickstart
 
 ```bash
 # Show build metadata for the current binary
@@ -50,8 +51,7 @@ run
 echo '{"name":"Ada"}' | run js --code "const data = JSON.parse(require('fs').readFileSync(0, 'utf8')); console.log(`hi ${data.name}`)"
 ```
 
-
-##  Installation
+## Installation
 
 All release assets are published on the [GitHub Releases](https://github.com/Esubaalew/run/releases) page, including macOS builds for both Apple Silicon (arm64) and Intel (x86_64). Pick the method that fits your platform:
 
@@ -73,7 +73,7 @@ cargo install run-kit
 brew install --formula https://github.com/Esubaalew/run/releases/latest/download/homebrew-run.rb
 ```
 
->  This formula is published as a standalone file on each release; it isn’t part of the default Homebrew taps. Installing by name (`brew install homebrew-run`) will fail—always point Homebrew to the release URL above (or download the file and run `brew install ./homebrew-run.rb`).
+> This formula is published as a standalone file on each release; it isn’t part of the default Homebrew taps. Installing by name (`brew install homebrew-run`) will fail—always point Homebrew to the release URL above (or download the file and run `brew install ./homebrew-run.rb`).
 
 Once the latest release artifacts are published, Homebrew automatically selects the correct macOS binary for your CPU (Intel or Apple Silicon) based on this formula.
 
@@ -134,7 +134,7 @@ The project targets Rust 1.70+. Installing from crates.io gives you the same `ru
 
 </details>
 
-##  How it works
+## How it works
 
 `run` shells out to real toolchains under the hood. Each `LanguageEngine` implements a small trait that knows how to:
 
@@ -145,9 +145,9 @@ The project targets Rust 1.70+. Installing from crates.io gives you the same `ru
 
 This architecture keeps the core lightweight while making it easy to add new runtimes or swap implementations.
 
-##  Supported languages
+## Supported languages
 
-`run` supportes 25+ languages:
+`run` supports 25+ languages:
 
 | Category                  | Languages & aliases                                                                                                                                                                                    | Toolchain expectations                           |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
@@ -155,9 +155,7 @@ This architecture keeps the core lightweight while making it easy to add new run
 | **Web & typed scripting** | JavaScript (`js`, `node`), TypeScript (`ts`, `deno`), Dart (`dart`), Swift (`swift`), Kotlin (`kt`, `kotlin`)                                                                                          | `node`, `deno`, `dart`, `swift`, `kotlinc` + JRE |
 | **Systems & compiled**    | C (`c`), C++ (`cpp`, `cxx`), Rust (`rs`, `rust`), Go (`go`), Zig (`zig`), Nim (`nim`), Haskell (`hs`, `haskell`), Crystal (`cr`, `crystal`), C# (`cs`, `csharp`), Java (`java`), Julia (`jl`, `julia`) | Respective compiler / toolchain                  |
 
-
-
-##  Examples
+## Examples
 
 Real programs live under the [`examples/`](examples) tree—each language has a `hello` and a `progress` scenario. The headers document expected output so you can diff your toolchain.
 
@@ -167,8 +165,8 @@ run examples/typescript/progress.ts
 run examples/python/counter.py
 ```
 
+## REPL
 
-##  REPL
 Being inside REPL we can use the ff commands
 
 | Command                    | Purpose                                      |
@@ -181,12 +179,7 @@ Being inside REPL we can use the ff commands
 | `:reset`                   | Clear the accumulated session state          |
 | `:exit` / `:quit`          | Leave the REPL                               |
 
-
-
-
-
-
-##  License
+## License
 
 Apache 2.0. See [LICENSE](LICENSE) for details.
 

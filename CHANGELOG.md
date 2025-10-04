@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file. The format 
 
 _Nothing yet._
 
+## [0.1.1] - 2025-10-04
+
+### Changed
+
+- Polished `README.md`: added a crates.io badge, fixed heading spacing, and corrected typos so the documentation shown on crates.io matches the repository.
+
 ## [0.1.0] - 2025-10-03
 
 ### Added
@@ -24,5 +30,6 @@ _Nothing yet._
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/Esubaalew/run/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Esubaalew/run/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Esubaalew/run/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Esubaalew/run/releases/tag/v0.1.0
