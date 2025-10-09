@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.0] - 2025-10-09
+
 ### Added
 
 - Groovy language support via the `groovy` CLI, including inline, file, and stdin execution plus new sample scripts in `examples/groovy/`.
@@ -32,6 +36,7 @@ All notable changes to this project will be documented in this file. The format 
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/Esubaalew/run/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Esubaalew/run/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Esubaalew/run/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Esubaalew/run/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Esubaalew/run/releases/tag/v0.1.0
