@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- Groovy language support via the `groovy` CLI, including inline, file, and stdin execution plus new sample scripts in `examples/groovy/`.
 
 ## [0.1.1] - 2025-10-04
 

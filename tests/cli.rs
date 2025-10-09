@@ -20,6 +20,10 @@ fn ruby_available() -> bool {
     run::engine::RubyEngine::new().validate().is_ok()
 }
 
+fn groovy_available() -> bool {
+    run::engine::GroovyEngine::new().validate().is_ok()
+}
+
 fn typescript_available() -> bool {
     run::engine::TypeScriptEngine::new().validate().is_ok()
 }
@@ -285,6 +289,104 @@ fn ruby_stdin_execution() {
         .assert()
         .success()
         .stdout(predicate::str::contains("stdin-ruby\n"));
+}
+
+#[test]
+fn inline_groovy_execution() {
+    if !groovy_available() {
+        eprintln!("skipping groovy inline test: groovy executable not available");
+        return;
+    }
+
+    run_binary()
+        .args(["--lang", "groovy", "--code", "println 'inline-groovy'"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("inline-groovy\n"));
+}
+
+#[test]
+fn groovy_file_execution() {
+    if !groovy_available() {
+        eprintln!("skipping groovy file test: groovy executable not available");
+        return;
+    }
+
+    let mut script = tempfile::Builder::new()
+        .suffix(".groovy")
+        .tempfile()
+        .expect("temp file");
+    writeln!(script, "println 'from file'\nvalue = 21 * 2\nprintln value").expect("write file");
+
+    run_binary()
+        .args(["groovy", script.path().to_str().expect("path utf8")])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+}
+
+#[test]
+fn groovy_stdin_execution() {
+    if !groovy_available() {
+        eprintln!("skipping groovy stdin test: groovy executable not available");
+        return;
+    }
+
+    run_binary()
+        .args(["groovy", "-"])
+        .write_stdin("println 'stdin-groovy'\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("stdin-groovy\n"));
+}
+
+#[test]
+fn groovy_stdin_trailing_expression_prints() {
+    if !groovy_available() {
+        eprintln!("skipping groovy stdin expression test: groovy executable not available");
+        return;
+    }
+
+    let code = "def nums = [1, 2, 3, 4, 5]\n\
+def evens = nums.findAll { it % 2 == 0 }\n\
+def doubled = evens.collect { it * 2 }\n\
+doubled       // last line evaluates to [4, 8]\n";
+
+    run_binary()
+        .args(["groovy", "-"])
+        .write_stdin(code)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[4, 8]\n"));
+}
+
+#[test]
+fn groovy_session_interactivity() {
+    if !groovy_available() {
+        eprintln!("skipping groovy session test: groovy executable not available");
+        return;
+    }
+
+    let engine = run::engine::GroovyEngine::new();
+    if !engine.supports_sessions() {
+        eprintln!("skipping groovy session test: groovy sessions not supported");
+        return;
+    }
+
+    let mut session = engine.start_session().expect("start groovy session");
+    let define = session.eval("def x = 10").expect("define groovy variable");
+    assert!(define.stderr.trim().is_empty());
+
+    let expr = session.eval("x").expect("read groovy variable");
+    assert!(expr.stdout.contains("10"));
+
+    session
+        .eval("def y = 5")
+        .expect("define secondary variable");
+    let sum = session.eval("x + y").expect("evaluate groovy expression");
+    assert!(sum.stdout.contains("15"));
+
+    session.shutdown().expect("shutdown groovy session");
 }
 
 #[test]

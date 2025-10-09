@@ -29,6 +29,9 @@ pub fn detect_language_from_snippet(code: &str) -> Option<&'static str> {
     if JAVA_SIGNATURE.is_match(trimmed) {
         return Some("java");
     }
+    if GROOVY_SIGNATURE.is_match(trimmed) {
+        return Some("groovy");
+    }
     if TYPESCRIPT_SIGNATURE.is_match(trimmed) {
         return Some("typescript");
     }
@@ -117,6 +120,13 @@ static CPP_SIGNATURE: Lazy<Regex> = Lazy::new(|| {
 static JAVA_SIGNATURE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?m)^(package\s+[\w\.]+;|import\s+java\.|public\s+class\s+|class\s+\w+\s*\{\s*\n\s*public\s+static\s+void\s+main)"#)
         .expect("valid java regex")
+});
+
+static GROOVY_SIGNATURE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"(?m)^(?:@Grab|@Grapes|println\s|def\s+\w+\s*=|import\s+groovy\.|class\s+\w+\s*\{|package\s+[\w\.]+)"#,
+    )
+    .expect("valid groovy regex")
 });
 
 static TYPESCRIPT_SIGNATURE: Lazy<Regex> = Lazy::new(|| {

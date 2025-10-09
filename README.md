@@ -1,4 +1,3 @@
-
 <h1 align="center">run</h1>
 
 <p align="center">
@@ -190,12 +189,16 @@ Once the latest release artifacts are published, Homebrew automatically selects 
 <summary><strong>Debian / Ubuntu</strong></summary>
 
 ```bash
-curl -LO https://github.com/Esubaalew/run/releases/latest/download/run-deb.sha256
-DEB_FILE=$(awk '{print $2}' run-deb.sha256)
+ARCH=${ARCH:-amd64}
+DEB_FILE=$(curl -s https://api.github.com/repos/Esubaalew/run/releases/latest \
+  | grep -oE "run_[0-9.]+_${ARCH}\\.deb" | head -n 1)
 curl -LO "https://github.com/Esubaalew/run/releases/latest/download/${DEB_FILE}"
-sha256sum --check run-deb.sha256
+curl -LO "https://github.com/Esubaalew/run/releases/latest/download/${DEB_FILE}.sha256"
+sha256sum --check "${DEB_FILE}.sha256"
 sudo apt install "./${DEB_FILE}"
 ```
+
+> **Tip:** If you prefer to select the files manually, open the [latest release page](https://github.com/Esubaalew/run/releases/latest), note the `.deb` and matching `.sha256` asset names for your architecture (e.g., `amd64`, `arm64`), and substitute them for `${DEB_FILE}` above.
 
 </details>
 
@@ -290,11 +293,11 @@ R (Statistical computing)
 Dart (Mobile development)
 ```
 
-| Category                  | Languages & aliases                                                                                                                                                                                    | Toolchain expectations                           |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| **Scripting & shells**    | Bash (`bash`), Python (`py`, `python`), Ruby (`rb`, `ruby`), PHP (`php`), Perl (`perl`), Lua (`lua`), R (`r`), Elixir (`ex`, `elixir`)                                                                 | Matching interpreter on `PATH`                   |
-| **Web & typed scripting** | JavaScript (`js`, `node`), TypeScript (`ts`, `deno`), Dart (`dart`), Kotlin (`kt`, `kotlin`)                                                                                                          | `node`, `deno`, `dart`, `kotlinc` + JRE          |
-| **Systems & compiled**    | C (`c`), C++ (`cpp`, `cxx`), Rust (`rs`, `rust`), Go (`go`), Swift (`swift`), Zig (`zig`), Nim (`nim`), Haskell (`hs`, `haskell`), Crystal (`cr`, `crystal`), C# (`cs`, `csharp`), Java (`java`), Julia (`jl`, `julia`) | Respective compiler / toolchain                  |
+| Category                  | Languages & aliases                                                                                                                                                                                                     | Toolchain expectations                  |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| **Scripting & shells**    | Bash (`bash`), Python (`py`, `python`), Ruby (`rb`, `ruby`), PHP (`php`), Perl (`perl`), Groovy (`groovy`, `grv`), Lua (`lua`), R (`r`), Elixir (`ex`, `elixir`)                                                        | Matching interpreter on `PATH`          |
+| **Web & typed scripting** | JavaScript (`js`, `node`), TypeScript (`ts`, `deno`), Dart (`dart`), Kotlin (`kt`, `kotlin`)                                                                                                                            | `node`, `deno`, `dart`, `kotlinc` + JRE |
+| **Systems & compiled**    | C (`c`), C++ (`cpp`, `cxx`), Rust (`rs`, `rust`), Go (`go`), Swift (`swift`), Zig (`zig`), Nim (`nim`), Haskell (`hs`, `haskell`), Crystal (`cr`, `crystal`), C# (`cs`, `csharp`), Java (`java`), Julia (`jl`, `julia`) | Respective compiler / toolchain         |
 
 ### Categorization notes
 
@@ -310,34 +313,35 @@ These groupings optimize for how commands are invoked and which toolchains `run`
 
 Every language in run has multiple aliases for convenience. Use whichever feels most natural to you:
 
-| Alias | Description |
-|  --  |  --  |
-| `python, py, py3, python3` | Python programming language |
-| `javascript, js, node, nodejs` | JavaScript (Node.js runtime) |
-| `typescript, ts, ts-node, deno` | TypeScript with type checking |
-| `rust, rs` | Rust systems programming language |
-| `go, golang` | Go programming language |
-| `c, gcc, clang` | C programming language |
-| `cpp, c++, g++` | C++ programming language |
-| `java` | Java programming language |
-| `csharp, cs, dotnet` | C# (.NET) |
-| `ruby, rb, irb` | Ruby programming language |
-| `bash, sh, shell, zsh` | Bash shell scripting |
-| `lua, luajit` | Lua scripting language |
-| `perl, pl` | Perl programming language |
-| `php, php-cli` | PHP scripting language |
-| `haskell, hs, ghci` | Haskell functional language |
-| `elixir, ex, exs, iex` | Elixir functional language |
-| `julia, jl` | Julia scientific computing |
-| `dart, dartlang, flutter` | Dart language (Flutter) |
-| `swift, swiftlang` | Swift programming language |
-| `kotlin, kt, kts` | Kotlin (JVM/Native) |
-| `r, rscript, cran` | R statistical computing |
-| `crystal, cr, crystal-lang` | Crystal language |
-| `zig, ziglang` | Zig systems language |
-| `nim, nimlang` | Nim programming language |
-| `ocaml` | OCaml functional language |
-| `clojure, clj` | Clojure Lisp dialect |
+| Alias                           | Description                       |
+| ------------------------------- | --------------------------------- |
+| `python, py, py3, python3`      | Python programming language       |
+| `javascript, js, node, nodejs`  | JavaScript (Node.js runtime)      |
+| `typescript, ts, ts-node, deno` | TypeScript with type checking     |
+| `rust, rs`                      | Rust systems programming language |
+| `go, golang`                    | Go programming language           |
+| `c, gcc, clang`                 | C programming language            |
+| `cpp, c++, g++`                 | C++ programming language          |
+| `java`                          | Java programming language         |
+| `csharp, cs, dotnet`            | C# (.NET)                         |
+| `ruby, rb, irb`                 | Ruby programming language         |
+| `bash, sh, shell, zsh`          | Bash shell scripting              |
+| `lua, luajit`                   | Lua scripting language            |
+| `perl, pl`                      | Perl programming language         |
+| `groovy, grv, groovysh`         | Groovy on the JVM                 |
+| `php, php-cli`                  | PHP scripting language            |
+| `haskell, hs, ghci`             | Haskell functional language       |
+| `elixir, ex, exs, iex`          | Elixir functional language        |
+| `julia, jl`                     | Julia scientific computing        |
+| `dart, dartlang, flutter`       | Dart language (Flutter)           |
+| `swift, swiftlang`              | Swift programming language        |
+| `kotlin, kt, kts`               | Kotlin (JVM/Native)               |
+| `r, rscript, cran`              | R statistical computing           |
+| `crystal, cr, crystal-lang`     | Crystal language                  |
+| `zig, ziglang`                  | Zig systems language              |
+| `nim, nimlang`                  | Nim programming language          |
+| `ocaml`                         | OCaml functional language         |
+| `clojure, clj`                  | Clojure Lisp dialect              |
 
 ---
 
@@ -520,14 +524,14 @@ The REPL supports several built-in commands for managing your session:
 | `:reset`                   | Clear the accumulated session state          |
 | `:exit` / `:quit`          | Leave the REPL                               |
 
-| Alias | Description |
-|  --  |  --  |
-| `:help` | Show available REPL commands |
-| `:quit or :q` | Exit the REPL |
-| `:clear or :c` | Clear the screen |
-| `:reset` | Reset the session (clear all variables) |
-| `:lang <language>` | Switch to a different language |
-| `:py, :js, :go, etc.` | Quick language switch shortcuts |
+| Alias                 | Description                             |
+| --------------------- | --------------------------------------- |
+| `:help`               | Show available REPL commands            |
+| `:quit or :q`         | Exit the REPL                           |
+| `:clear or :c`        | Clear the screen                        |
+| `:reset`              | Reset the session (clear all variables) |
+| `:lang <language>`    | Switch to a different language          |
+| `:py, :js, :go, etc.` | Quick language switch shortcuts         |
 
 ### Interactive REPL - Line by Line or Paste All
 
@@ -573,9 +577,7 @@ python>>> print(x + y)
 30
 ```
 
-### Variable Persistence & Language Switching
-
-Variables persist across REPL commands within the same session. You can also switch languages on the fly using the :lang command (e.g., :c, :py, :go):
+> **Tip:** The exact file names follow the pattern `run_<version>_<arch>.deb`. If you prefer to choose manually, visit the [latest release page](https://github.com/Esubaalew/run/releases/latest), note the `.deb` and matching `.sha256` asset names for your architecture (e.g. `amd64`, `arm64`), and substitute them for `${DEB_FILE}` above.
 
 In REPL mode, variables persist across commands within the same language session. You can also switch languages on the fly using :lang commands.
 
@@ -613,9 +615,12 @@ python>>> z == y
 False
 ```
 
-### Language Switching Commands
-
-Switch between languages instantly in REPL mode using colon commands
+DEB*FILE=$(curl -s https://api.github.com/repos/Esubaalew/run/releases/latest \
+ | grep -oE 'run*[0-9.]+\_amd64\.deb' | head -n 1)
+curl -LO "https://github.com/Esubaalew/run/releases/latest/download/${DEB_FILE}"
+curl -LO "https://github.com/Esubaalew/run/releases/latest/download/${DEB_FILE}.sha256"
+sha256sum --check "${DEB_FILE}.sha256"
+  sudo apt install "./${DEB_FILE}"
 
 ### Built-in REPL Commands
 
@@ -705,11 +710,43 @@ For detailed usage, quirks, and best practices for each language, visit the dedi
 - [Rust](https://run.esubalew.et/): Compilation flags, error handling, and workspace management.
 - [Go](https://run.esubalew.et/): Package imports, build optimizations, and concurrency examples.
 - [C/C++](https://run.esubalew.et/): Compiler selection, linking, and multi-file support.
+- **C++**: Remember to include the standard headers your snippet depends on—`std::cout` and friends require `#include <iostream>`. When in doubt, wrap the snippet in a minimal `main` for portability:
+  ```bash
+  cat <<'EOF' | run cpp
+  #include <iostream>
+  int square(int x) { return x * x; }
+  int main() {
+      std::cout << square(7) << std::endl;
+      return 0;
+  }
+  EOF
+  ```
+  Skipping the include or `main` will lead to compiler errors such as `use of undeclared identifier 'std'`.
+- **C**: Avoid piping code through the shell’s `printf`—it expands `%d`, `\n`, and friends before `run` sees the source. Use quoted here-docs instead so the compiler gets the exact text you typed:
+  ```bash
+  cat <<'EOF' | run c
+  #include <stdio.h>
+  int main() {
+      int value = 10;
+      printf("%d\n", value);
+      return 0;
+  }
+  EOF
+  ```
 - [Java](https://run.esubalew.et/): Classpath management, JVM args, and enterprise patterns.
 - [TypeScript](https://run.esubalew.et/): Type checking, Deno vs Node, and transpilation.
+- **Groovy**: When piping code via here-docs, quote the delimiter (`<<'EOF'`) so the shell doesn’t expand `$variables` before Groovy sees them. Example:
+  ```bash
+  cat <<'EOF' | run groovy
+  def name = "Esubalew"
+  println "Hello, $name!"
+  EOF
+  ```
+  Without quoting, shells like Bash erase the interpolation and Groovy prints `Hello, !`.
 - [And more...](https://run.esubalew.et/docs/overview) for all 25+ languages including Ruby, PHP, Haskell, Elixir, and specialized ones like R and Julia.
 
 Each language doc covers:
+
 - Toolchain requirements and detection
 - REPL-specific features (e.g., persistent state)
 - Common pitfalls and workarounds

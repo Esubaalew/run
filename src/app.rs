@@ -3,13 +3,13 @@ use std::io::{self, Write};
 use anyhow::{Context, Result};
 
 use crate::cli::{Command, ExecutionSpec};
-use crate::version;
 use crate::engine::{
     ExecutionPayload, LanguageRegistry, default_language, detect_language_for_source,
     ensure_known_language,
 };
 use crate::language::LanguageSpec;
 use crate::repl;
+use crate::version;
 
 pub fn run(command: Command) -> Result<i32> {
     let registry = LanguageRegistry::bootstrap();

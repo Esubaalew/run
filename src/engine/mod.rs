@@ -6,6 +6,7 @@ mod csharp;
 mod dart;
 mod elixir;
 mod go;
+mod groovy;
 mod haskell;
 mod java;
 mod javascript;
@@ -41,6 +42,7 @@ pub use csharp::CSharpEngine;
 pub use dart::DartEngine;
 pub use elixir::ElixirEngine;
 pub use go::GoEngine;
+pub use groovy::GroovyEngine;
 pub use haskell::HaskellEngine;
 pub use java::JavaEngine;
 pub use javascript::JavascriptEngine;
@@ -226,6 +228,7 @@ impl LanguageRegistry {
         registry.register_language(TypeScriptEngine::new());
         registry.register_language(LuaEngine::new());
         registry.register_language(JavaEngine::new());
+        registry.register_language(GroovyEngine::new());
         registry.register_language(PhpEngine::new());
         registry.register_language(KotlinEngine::new());
         registry.register_language(CEngine::new());
@@ -349,6 +352,7 @@ fn extension_to_language(ext: &str) -> Option<&'static str> {
         "rb" => Some("ruby"),
         "lua" => Some("lua"),
         "java" => Some("java"),
+        "groovy" => Some("groovy"),
         "php" => Some("php"),
         "kt" | "kts" => Some("kotlin"),
         "c" => Some("c"),

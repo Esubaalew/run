@@ -102,10 +102,7 @@ pub fn parse() -> Result<Command> {
             }
             Some("-f") | Some("--file") => {
                 trailing.remove(0);
-                ensure!(
-                    !trailing.is_empty(),
-                    "--file requires a path argument"
-                );
+                ensure!(!trailing.is_empty(), "--file requires a path argument");
                 ensure!(
                     trailing.len() == 1,
                     "Unexpected positional arguments after specifying --file"

@@ -51,6 +51,9 @@ pub fn describe() -> String {
         BUILD_PROFILE.unwrap_or("unknown profile"),
         BUILD_TARGET.unwrap_or("unknown target"),
     ));
-    lines.push(format!("rustc: {}", RUSTC_VERSION.unwrap_or("unknown rustc")));
+    lines.push(format!(
+        "rustc: {}",
+        RUSTC_VERSION.unwrap_or("unknown rustc")
+    ));
     lines.join("\n")
 }
