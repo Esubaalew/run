@@ -5,12 +5,44 @@
 </p>
 
 <p align="center">
-	<a href="https://github.com/Esubaalew/run/actions/workflows/release.yml"><img src="https://github.com/Esubaalew/run/actions/workflows/release.yml/badge.svg" alt="Release pipeline" /></a>
-	<a href="https://github.com/Esubaalew/run/releases/latest"><img src="https://img.shields.io/github/v/release/Esubaalew/run?display_name=tag&sort=semver" alt="Latest release" /></a>
-	<a href="https://github.com/Esubaalew/run/releases"><img src="https://img.shields.io/github/downloads/Esubaalew/run/total.svg" alt="Downloads" /></a>
-	<a href="https://crates.io/crates/run-kit"><img src="https://img.shields.io/crates/v/run-kit.svg?label=crates.io&logo=rust" alt="crates.io" /></a>
-	<a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License" /></a>
+  <!-- Release -->
+  <a href="https://github.com/Esubaalew/run/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Esubaalew/run?style=flat-square&color=orange&logo=github" alt="Latest release" />
+  </a>
+
+  <!-- Release status -->
+  <img src="https://img.shields.io/badge/release-passing-brightgreen?style=flat-square" alt="Release passing" />
+
+  <!-- Docs -->
+  <a href="https://docs.rs/run-kit">
+    <img src="https://img.shields.io/badge/docs-passing-brightgreen?style=flat-square&logo=rust" alt="Docs passing" />
+  </a>
+
+  <!-- Crates.io -->
+  <a href="https://crates.io/crates/run-kit">
+    <img src="https://img.shields.io/crates/v/run-kit.svg?style=flat-square&logo=rust&color=red" alt="crates.io" />
+  </a>
+
+  <!-- Downloads -->
+  <a href="https://github.com/Esubaalew/run/releases">
+    <img src="https://img.shields.io/github/downloads/Esubaalew/run/total?style=flat-square&color=blue" alt="Downloads" />
+  </a>
+
+  <!-- Stars -->
+  <a href="https://github.com/Esubaalew/run/stargazers">
+    <img src="https://img.shields.io/github/stars/Esubaalew/run?style=flat-square&color=yellow" alt="GitHub stars" />
+  </a>
+
+  <!-- Platforms -->
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="Platform support" />
+
+  <!-- License -->
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License" />
+  </a>
 </p>
+
+
 
 <p align="center">
 	<a href="https://run.esubalew.et/">Website</a>
@@ -308,40 +340,39 @@ The categories above are usage-based to match how you’ll likely run code with 
 - TypeScript typically runs via Node or Deno at runtime (transpiled), which is why it appears under “Web & typed scripting.”
 
 These groupings optimize for how commands are invoked and which toolchains `run` detects and orchestrates.
-
 ### Complete Language Aliases Reference
 
 Every language in run has multiple aliases for convenience. Use whichever feels most natural to you:
 
-| Alias                           | Description                       |
-| ------------------------------- | --------------------------------- |
-| `python, py, py3, python3`      | Python programming language       |
-| `javascript, js, node, nodejs`  | JavaScript (Node.js runtime)      |
-| `typescript, ts, ts-node, deno` | TypeScript with type checking     |
-| `rust, rs`                      | Rust systems programming language |
-| `go, golang`                    | Go programming language           |
-| `c, gcc, clang`                 | C programming language            |
-| `cpp, c++, g++`                 | C++ programming language          |
-| `java`                          | Java programming language         |
-| `csharp, cs, dotnet`            | C# (.NET)                         |
-| `ruby, rb, irb`                 | Ruby programming language         |
-| `bash, sh, shell, zsh`          | Bash shell scripting              |
-| `lua, luajit`                   | Lua scripting language            |
-| `perl, pl`                      | Perl programming language         |
-| `groovy, grv, groovysh`         | Groovy on the JVM                 |
-| `php, php-cli`                  | PHP scripting language            |
-| `haskell, hs, ghci`             | Haskell functional language       |
-| `elixir, ex, exs, iex`          | Elixir functional language        |
-| `julia, jl`                     | Julia scientific computing        |
-| `dart, dartlang, flutter`       | Dart language (Flutter)           |
-| `swift, swiftlang`              | Swift programming language        |
-| `kotlin, kt, kts`               | Kotlin (JVM/Native)               |
-| `r, rscript, cran`              | R statistical computing           |
-| `crystal, cr, crystal-lang`     | Crystal language                  |
-| `zig, ziglang`                  | Zig systems language              |
-| `nim, nimlang`                  | Nim programming language          |
-| `ocaml`                         | OCaml functional language         |
-| `clojure, clj`                  | Clojure Lisp dialect              |
+| Alias                           | Description                       | Badge |
+| ------------------------------- | --------------------------------- | ------ |
+| `python, py, py3, python3`      | Python programming language       | ![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white) |
+| `javascript, js, node, nodejs`  | JavaScript (Node.js runtime)      | ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?logo=javascript&logoColor=black) |
+| `typescript, ts, ts-node, deno` | TypeScript with type checking     | ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white) |
+| `rust, rs`                      | Rust systems programming language | ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white) |
+| `go, golang`                    | Go programming language           | ![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white) |
+| `c, gcc, clang`                 | C programming language            | ![C](https://img.shields.io/badge/C-A8B9CC?logo=c&logoColor=black) |
+| `cpp, c++, g++`                 | C++ programming language          | ![C++](https://img.shields.io/badge/C++-00599C?logo=cplusplus&logoColor=white) |
+| `java`                          | Java programming language         | ![Java](https://img.shields.io/badge/Java-007396?logo=java&logoColor=white) |
+| `csharp, cs, dotnet`            | C# (.NET)                         | ![C#](https://img.shields.io/badge/C%23-512BD4?logo=dotnet&logoColor=white) |
+| `ruby, rb, irb`                 | Ruby programming language         | ![Ruby](https://img.shields.io/badge/Ruby-CC342D?logo=ruby&logoColor=white) |
+| `bash, sh, shell, zsh`          | Bash shell scripting              | ![Bash](https://img.shields.io/badge/Bash-4EAA25?logo=gnubash&logoColor=white) |
+| `lua, luajit`                   | Lua scripting language            | ![Lua](https://img.shields.io/badge/Lua-2C2D72?logo=lua&logoColor=white) |
+| `perl, pl`                      | Perl programming language         | ![Perl](https://img.shields.io/badge/Perl-39457E?logo=perl&logoColor=white) |
+| `groovy, grv, groovysh`         | Groovy on the JVM                 | ![Groovy](https://img.shields.io/badge/Groovy-4298B8?logo=apachegroovy&logoColor=white) |
+| `php, php-cli`                  | PHP scripting language            | ![PHP](https://img.shields.io/badge/PHP-777BB4?logo=php&logoColor=white) |
+| `haskell, hs, ghci`             | Haskell functional language       | ![Haskell](https://img.shields.io/badge/Haskell-5D4F85?logo=haskell&logoColor=white) |
+| `elixir, ex, exs, iex`          | Elixir functional language        | ![Elixir](https://img.shields.io/badge/Elixir-4B275F?logo=elixir&logoColor=white) |
+| `julia, jl`                     | Julia scientific computing        | ![Julia](https://img.shields.io/badge/Julia-9558B2?logo=julia&logoColor=white) |
+| `dart, dartlang, flutter`       | Dart language (Flutter)           | ![Dart](https://img.shields.io/badge/Dart-0175C2?logo=dart&logoColor=white) |
+| `swift, swiftlang`              | Swift programming language        | ![Swift](https://img.shields.io/badge/Swift-FA7343?logo=swift&logoColor=white) |
+| `kotlin, kt, kts`               | Kotlin (JVM/Native)               | ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white) |
+| `r, rscript, cran`              | R statistical computing           | ![R](https://img.shields.io/badge/R-276DC3?logo=r&logoColor=white) |
+| `crystal, cr, crystal-lang`     | Crystal language                  | ![Crystal](https://img.shields.io/badge/Crystal-000000?logo=crystal&logoColor=white) |
+| `zig, ziglang`                  | Zig systems language              | ![Zig](https://img.shields.io/badge/Zig-F7A41D?logo=zig&logoColor=black) |
+| `nim, nimlang`                  | Nim programming language          | ![Nim](https://img.shields.io/badge/Nim-FFE953?logo=nim&logoColor=black) |
+  <!--| `ocaml`                         | OCaml functional language         | ![OCaml](https://img.shields.io/badge/OCaml-EC6813?logo=ocaml&logoColor=white) |
+| `clojure, clj`                  | Clojure Lisp dialect              | ![Clojure](https://img.shields.io/badge/Clojure-5881D8?logo=clojure&logoColor=white) |  -->
 
 ---
 
