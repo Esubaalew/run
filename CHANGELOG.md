@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.2.1] - 2025-10-10
+
+### Fixed
+
+- Preserve top-level import/package lines for Kotlin and Java wrapper flows (avoid imports inside generated main/class).
+- Add TypeScript (Deno) guidance and Dart quoting guidance to README; recommend quoted here-docs for shell-sensitive snippets and provide zsh-safe inline examples.
+
 ## [0.2.0] - 2025-10-09
 
 ### Added
@@ -37,6 +44,7 @@ Nothing yet.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
 [Unreleased]: https://github.com/Esubaalew/run/compare/v0.2.0...HEAD
+[0.2.1]: https://github.com/Esubaalew/run/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Esubaalew/run/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Esubaalew/run/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Esubaalew/run/releases/tag/v0.1.0
