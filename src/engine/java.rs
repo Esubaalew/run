@@ -285,20 +285,46 @@ fn wrap_inline_java(body: &str) -> String {
         return body.to_string();
     }
 
-    let mut wrapped = String::from(
-        "public class Main {\n    public static void main(String[] args) throws Exception {\n",
-    );
+    // Preserve leading package/import lines at top-level so they aren't placed
+    // inside the generated Main class. Collect header lines then wrap the
+    // remaining code inside the Main class's main method.
+    let mut header_lines = Vec::new();
+    let mut rest_lines = Vec::new();
+    let mut in_header = true;
+
     for line in body.lines() {
+        let trimmed = line.trim_start();
+        if in_header && (trimmed.starts_with("import ") || trimmed.starts_with("package ")) {
+            header_lines.push(line);
+            continue;
+        }
+        in_header = false;
+        rest_lines.push(line);
+    }
+
+    let mut result = String::new();
+    if !header_lines.is_empty() {
+        for hl in header_lines {
+            result.push_str(hl);
+            if !hl.ends_with('\n') {
+                result.push('\n');
+            }
+        }
+        result.push('\n');
+    }
+
+    result.push_str("public class Main {\n    public static void main(String[] args) throws Exception {\n");
+    for line in rest_lines {
         if line.trim().is_empty() {
-            wrapped.push_str("        \n");
+            result.push_str("        \n");
         } else {
-            wrapped.push_str("        ");
-            wrapped.push_str(line);
-            wrapped.push('\n');
+            result.push_str("        ");
+            result.push_str(line);
+            result.push('\n');
         }
     }
-    wrapped.push_str("    }\n}\n");
-    wrapped
+    result.push_str("    }\n}\n");
+    result
 }
 
 struct JavaSession {

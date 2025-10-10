@@ -56,12 +56,45 @@ fn java_available() -> bool {
     run::engine::JavaEngine::new().validate().is_ok()
 }
 
+#[test]
+fn java_inline_with_imports() {
+    if !java_available() {
+        eprintln!("skipping java inline import test: javac/java not available");
+        return;
+    }
+
+    let code = "import java.util.*;\npublic class Main { public static void main(String[] args) { System.out.println(\"[Java] inline import OK\"); } }";
+
+    run_binary()
+        .args(["--lang", "java", "--code", code])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[Java] inline import OK"));
+}
+
 fn php_available() -> bool {
     run::engine::PhpEngine::new().validate().is_ok()
 }
 
 fn kotlin_available() -> bool {
     run::engine::KotlinEngine::new().validate().is_ok()
+}
+
+#[test]
+fn kotlin_stdin_with_imports_and_loop() {
+    if !kotlin_available() {
+        eprintln!("skipping kotlin stdin test: kotlinc/java not available");
+        return;
+    }
+
+    let code = "import kotlin.system.measureTimeMillis\nval N = 1000\nvar sum = 0L\nval t = measureTimeMillis { for (i in 1..N) sum += i }\nprintln(\"[Kotlin] Sum: $sum | Time: ${t} ms\")\n";
+
+    run_binary()
+        .args(["kotlin", "-"])
+        .write_stdin(code)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[Kotlin] Sum:"));
 }
 
 fn dart_available() -> bool {
