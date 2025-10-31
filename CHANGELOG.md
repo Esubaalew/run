@@ -6,6 +6,24 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.3.0] - 2025-10-31
+
+### Added
+
+- **Syntax highlighting** for all supported languages in the REPL with real-time color coding
+  - Automatically adapts when switching languages
+
+- Lua REPL support for `= expr` syntax to evaluate and print expressions
+
+### Fixed
+
+- Zig: File execution and session expression evaluation
+- Nim: File execution and compiler message filtering
+- Go: Standalone function execution with session imports
+- Haskell: Variable scoping and `let` bindings in REPL sessions
+- TypeScript: Color code handling in Deno output
+- Improved error detection in C# and Kotlin REPL sessions
+
 ## [0.2.1] - 2025-10-10
 
 ### Fixed
@@ -43,7 +61,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/Esubaalew/run/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Esubaalew/run/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Esubaalew/run/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Esubaalew/run/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Esubaalew/run/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Esubaalew/run/compare/v0.1.0...v0.1.1

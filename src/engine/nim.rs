@@ -105,7 +105,15 @@ impl LanguageEngine for NimEngine {
                 let (dir, path) = self.write_temp_source(code)?;
                 (Some(dir), path)
             }
-            ExecutionPayload::File { path } => (None, path.clone()),
+            ExecutionPayload::File { path } => {
+                if path.extension().and_then(|e| e.to_str()) != Some("nim") {
+                    let code = std::fs::read_to_string(path)?;
+                    let (dir, new_path) = self.write_temp_source(&code)?;
+                    (Some(dir), new_path)
+                } else {
+                    (None, path.clone())
+                }
+            }
         };
 
         let output = self.run_source(&source_path)?;
@@ -461,11 +469,13 @@ fn filter_nim_stderr(stderr: &str) -> String {
             if trimmed.starts_with("Hint: mm: ") {
                 return false;
             }
-            if trimmed.starts_with("Hint: ")
+            if (trimmed.starts_with("Hint: ")
+                || trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()))
                 && (trimmed.contains(" lines;")
                     || trimmed.contains(" proj:")
                     || trimmed.contains(" out:")
-                    || trimmed.contains(" Success"))
+                    || trimmed.contains("Success")
+                    || trimmed.contains("[Success"))
             {
                 return false;
             }

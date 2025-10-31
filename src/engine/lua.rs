@@ -309,9 +309,15 @@ impl LanguageSession for LuaSession {
             });
         }
 
-        let is_expression = looks_like_expression_snippet(trimmed);
+        let (effective_code, force_expression) = if trimmed.starts_with('=') {
+            (trimmed[1..].trim(), true)
+        } else {
+            (trimmed, false)
+        };
+
+        let is_expression = force_expression || looks_like_expression_snippet(effective_code);
         let statement = if is_expression {
-            wrap_expression_snippet(trimmed)
+            wrap_expression_snippet(effective_code)
         } else {
             format!("{}\n", code.trim_end_matches(|c| c == '\r' || c == '\n'))
         };

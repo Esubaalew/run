@@ -102,17 +102,40 @@ impl LanguageEngine for ZigEngine {
                 let (dir, path) = self.write_temp_source(&snippet)?;
                 (Some(dir), path)
             }
-            ExecutionPayload::File { path } => (None, path.clone()),
+            ExecutionPayload::File { path } => {
+                if path.extension().and_then(|e| e.to_str()) != Some("zig") {
+                    let code = std::fs::read_to_string(path)?;
+                    let (dir, new_path) = self.write_temp_source(&code)?;
+                    (Some(dir), new_path)
+                } else {
+                    (None, path.clone())
+                }
+            }
         };
 
         let output = self.run_source(&source_path)?;
         drop(temp_dir);
 
+        let mut combined_stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr_str = String::from_utf8_lossy(&output.stderr).into_owned();
+
+        if output.status.success() && !stderr_str.contains("error:") {
+            if !combined_stdout.is_empty() && !stderr_str.is_empty() {
+                combined_stdout.push_str(&stderr_str);
+            } else if combined_stdout.is_empty() {
+                combined_stdout = stderr_str.clone();
+            }
+        }
+
         Ok(ExecutionOutcome {
             language: self.id().to_string(),
             exit_code: output.status.code(),
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            stdout: combined_stdout,
+            stderr: if output.status.success() && !stderr_str.contains("error:") {
+                String::new()
+            } else {
+                stderr_str
+            },
             duration: start.elapsed(),
         })
     }
@@ -151,7 +174,7 @@ fn wrap_inline_snippet(code: &str) -> String {
         }
     }
     if body.is_empty() {
-        body.push_str("    std.debug.print(\"\\n\", .{});\n");
+        body.push_str("    const stdout = std.io.getStdOut().writer(); _ = stdout.print(\"\\n\", .{}) catch {};\n");
     }
 
     format!("const std = @import(\"std\");\n\npub fn main() !void {{\n{body}}}\n")
@@ -263,11 +286,26 @@ impl ZigSession {
             )
         })?;
 
+        let mut stdout = Self::normalize_output(&output.stdout);
+        let stderr = Self::normalize_output(&output.stderr);
+
+        if output.status.success() && !stderr.contains("error:") {
+            if stdout.is_empty() {
+                stdout = stderr.clone();
+            } else {
+                stdout.push_str(&stderr);
+            }
+        }
+
         Ok(ExecutionOutcome {
             language: self.language_id().to_string(),
             exit_code: output.status.code(),
-            stdout: Self::normalize_output(&output.stdout),
-            stderr: Self::normalize_output(&output.stderr),
+            stdout,
+            stderr: if output.status.success() && !stderr.contains("error:") {
+                String::new()
+            } else {
+                stderr
+            },
             duration: start.elapsed(),
         })
     }
@@ -275,15 +313,30 @@ impl ZigSession {
     fn run_current(&mut self, start: Instant) -> Result<(ExecutionOutcome, bool)> {
         self.persist_source()?;
         let output = self.run_program()?;
-        let stdout_full = Self::normalize_output(&output.stdout);
+        let mut stdout_full = Self::normalize_output(&output.stdout);
         let stderr_full = Self::normalize_output(&output.stderr);
 
         let success = output.status.success();
+
+        // Merge stderr to stdout for Zig (std.debug.print goes to stderr)
+        if success && !stderr_full.is_empty() && !stderr_full.contains("error:") {
+            if stdout_full.is_empty() {
+                stdout_full = stderr_full.clone();
+            } else {
+                stdout_full.push_str(&stderr_full);
+            }
+        }
+
         let (stdout, stderr) = if success {
             let stdout_delta = Self::diff_outputs(&self.last_stdout, &stdout_full);
-            let stderr_delta = Self::diff_outputs(&self.last_stderr, &stderr_full);
+            let stderr_clean = if !stderr_full.contains("error:") {
+                String::new()
+            } else {
+                stderr_full.clone()
+            };
+            let stderr_delta = Self::diff_outputs(&self.last_stderr, &stderr_clean);
             self.last_stdout = stdout_full;
-            self.last_stderr = stderr_full;
+            self.last_stderr = stderr_clean;
             (stdout_delta, stderr_delta)
         } else {
             (stdout_full, stderr_full)

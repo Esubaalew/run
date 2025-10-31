@@ -78,7 +78,8 @@ impl LanguageEngine for TypeScriptEngine {
                 let mut cmd = self.run_command();
                 cmd.arg("run")
                     .args(["--quiet", "--no-check", "--ext", "ts"])
-                    .arg(script.path());
+                    .arg(script.path())
+                    .env("NO_COLOR", "1");
                 cmd.stdin(Stdio::inherit());
                 handle_deno_io(cmd.output(), self.binary(), "run Deno for inline execution")?
             }
@@ -86,7 +87,8 @@ impl LanguageEngine for TypeScriptEngine {
                 let mut cmd = self.run_command();
                 cmd.arg("run")
                     .args(["--quiet", "--no-check", "--ext", "ts"])
-                    .arg(path);
+                    .arg(path)
+                    .env("NO_COLOR", "1");
                 cmd.stdin(Stdio::inherit());
                 handle_deno_io(cmd.output(), self.binary(), "run Deno for file execution")?
             }
@@ -96,7 +98,8 @@ impl LanguageEngine for TypeScriptEngine {
                     .args(["--quiet", "--no-check", "--ext", "ts", "-"])
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
-                    .stderr(Stdio::piped());
+                    .stderr(Stdio::piped())
+                    .env("NO_COLOR", "1");
 
                 let mut child =
                     handle_deno_io(cmd.spawn(), self.binary(), "start Deno for stdin execution")?;
@@ -120,8 +123,8 @@ impl LanguageEngine for TypeScriptEngine {
         Ok(ExecutionOutcome {
             language: self.id().to_string(),
             exit_code: output.status.code(),
-            stdout: String::from_utf8_lossy(&output.stdout).replace('\r', ""),
-            stderr: String::from_utf8_lossy(&output.stderr).replace('\r', ""),
+            stdout: strip_ansi_codes(&String::from_utf8_lossy(&output.stdout)).replace('\r', ""),
+            stderr: strip_ansi_codes(&String::from_utf8_lossy(&output.stderr)).replace('\r', ""),
             duration: start.elapsed(),
         })
     }
@@ -135,6 +138,29 @@ impl LanguageEngine for TypeScriptEngine {
 
 fn resolve_deno_binary() -> PathBuf {
     which::which("deno").unwrap_or_else(|_| PathBuf::from("deno"))
+}
+
+fn strip_ansi_codes(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut chars = text.chars();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // Skip escape sequence
+            if chars.next() == Some('[') {
+                // Skip until we find a letter (end of escape sequence)
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
 }
 
 fn handle_deno_io<T>(result: std::io::Result<T>, binary: &Path, action: &str) -> Result<T> {
@@ -222,7 +248,8 @@ impl TypeScriptSession {
         let mut cmd = Command::new(&self.deno_path);
         cmd.arg("run")
             .args(["--quiet", "--no-check", "--ext", "ts"])
-            .arg(&self.entrypoint);
+            .arg(&self.entrypoint)
+            .env("NO_COLOR", "1");
         handle_deno_io(
             cmd.output(),
             &self.deno_path,
@@ -231,7 +258,7 @@ impl TypeScriptSession {
     }
 
     fn normalize(text: &str) -> String {
-        text.replace("\r\n", "\n").replace('\r', "")
+        strip_ansi_codes(&text.replace("\r\n", "\n").replace('\r', ""))
     }
 
     fn diff_outputs(previous: &str, current: &str) -> String {

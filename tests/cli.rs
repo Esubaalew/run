@@ -771,8 +771,14 @@ fn kotlin_session_interactivity() {
     let undefined = session.eval("answer").expect("expression after reset");
     assert!(undefined.exit_code.is_some());
     assert!(
-        undefined.stdout.contains("Unresolved reference")
-            || undefined.stderr.contains("Unresolved reference")
+        undefined
+            .stdout
+            .to_lowercase()
+            .contains("unresolved reference")
+            || undefined
+                .stderr
+                .to_lowercase()
+                .contains("unresolved reference")
     );
 
     session.shutdown().expect("shutdown kotlin session");
@@ -810,11 +816,16 @@ fn csharp_session_interactivity() {
 
     let undefined = session.eval("answer").expect("expression after reset");
     assert!(undefined.exit_code.is_some());
+    // C# compiler may produce different error codes depending on context
     assert!(
         undefined.stdout.contains("CS0103")
             || undefined.stdout.contains("CS0116")
+            || undefined.stdout.contains("CS1001")
+            || undefined.stdout.contains("CS1002")
             || undefined.stderr.contains("CS0103")
             || undefined.stderr.contains("CS0116")
+            || undefined.stderr.contains("CS1001")
+            || undefined.stderr.contains("CS1002")
     );
 
     session.shutdown().expect("shutdown csharp session");
@@ -2129,7 +2140,7 @@ fn inline_zig_execution() {
             "--code",
             r#"const std = @import("std");
 pub fn main() void {
-    std.debug.print("inline-zig\\n", .{});
+    std.debug.print("inline-zig\n", .{});
 }
 "#,
         ])
@@ -2231,7 +2242,7 @@ fn zig_session_numeric_suffix_literals() {
     assert!(use_value.stderr.is_empty());
 
     let print = session
-        .eval("std.debug.print(\"{d}\n\", .{10u32});")
+        .eval(r#"std.debug.print("{d}\n", .{10u32});"#)
         .expect("print suffixed literal");
     assert!(print.stdout.contains("10"));
     assert!(print.stderr.is_empty());

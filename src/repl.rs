@@ -1,22 +1,72 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use rustyline::Editor;
+use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
 use rustyline::history::DefaultHistory;
+use rustyline::validate::Validator;
+use rustyline::{Editor, Helper};
 
 use crate::engine::{ExecutionOutcome, ExecutionPayload, LanguageRegistry, LanguageSession};
+use crate::highlight;
 use crate::language::LanguageSpec;
 
 const HISTORY_FILE: &str = ".run_history";
+
+struct ReplHelper {
+    language_id: String,
+}
+
+impl ReplHelper {
+    fn new(language_id: String) -> Self {
+        Self { language_id }
+    }
+
+    fn update_language(&mut self, language_id: String) {
+        self.language_id = language_id;
+    }
+}
+
+impl Completer for ReplHelper {
+    type Candidate = String;
+}
+
+impl Hinter for ReplHelper {
+    type Hint = String;
+}
+
+impl Validator for ReplHelper {}
+
+impl Highlighter for ReplHelper {
+    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
+        if line.trim_start().starts_with(':') {
+            return Cow::Borrowed(line);
+        }
+
+        let highlighted = highlight::highlight_repl_input(line, &self.language_id);
+        Cow::Owned(highlighted)
+    }
+
+    fn highlight_char(&self, _line: &str, _pos: usize, _forced: bool) -> bool {
+        true
+    }
+}
+
+impl Helper for ReplHelper {}
 
 pub fn run_repl(
     initial_language: LanguageSpec,
     registry: LanguageRegistry,
     detect_enabled: bool,
 ) -> Result<i32> {
-    let mut editor = Editor::<(), DefaultHistory>::new()?;
+    let helper = ReplHelper::new(initial_language.canonical_id().to_string());
+    let mut editor = Editor::<ReplHelper, DefaultHistory>::new()?;
+    editor.set_helper(Some(helper));
+
     if let Some(path) = history_path() {
         let _ = editor.load_history(&path);
     }
@@ -27,6 +77,11 @@ pub fn run_repl(
 
     loop {
         let prompt = state.prompt();
+
+        if let Some(helper) = editor.helper_mut() {
+            helper.update_language(state.current_language().canonical_id().to_string());
+        }
+
         match editor.readline(&prompt) {
             Ok(line) => {
                 let trimmed = line.trim_end();
@@ -85,6 +140,10 @@ impl ReplState {
         };
         state.ensure_current_language()?;
         Ok(state)
+    }
+
+    fn current_language(&self) -> &LanguageSpec {
+        &self.current_language
     }
 
     fn prompt(&self) -> String {

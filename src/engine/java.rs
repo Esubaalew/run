@@ -313,7 +313,9 @@ fn wrap_inline_java(body: &str) -> String {
         result.push('\n');
     }
 
-    result.push_str("public class Main {\n    public static void main(String[] args) throws Exception {\n");
+    result.push_str(
+        "public class Main {\n    public static void main(String[] args) throws Exception {\n",
+    );
     for line in rest_lines {
         if line.trim().is_empty() {
             result.push_str("        \n");

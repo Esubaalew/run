@@ -199,6 +199,12 @@ impl HaskellSession {
                     source.push('\n');
                 }
             }
+
+            if let Some(last) = self.state.statements.last() {
+                if last.trim().starts_with("let ") {
+                    source.push_str("    return ()\n");
+                }
+            }
         }
 
         source
@@ -444,6 +450,11 @@ fn is_declaration(code: &str) -> bool {
     }
 
     // simple function definition detection: name args =
+    // Must contain '=' to be a declaration
+    if !trimmed.contains('=') {
+        return false;
+    }
+
     if let Some(lhs) = trimmed.split('=').next() {
         let lhs = lhs.trim();
         if lhs.is_empty() {

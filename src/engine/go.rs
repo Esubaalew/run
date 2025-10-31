@@ -143,6 +143,13 @@ fn resolve_go_binary() -> Option<PathBuf> {
     which::which("go").ok()
 }
 
+fn import_is_used_in_code(import: &str, code: &str) -> bool {
+    let import_trimmed = import.trim().trim_matches('"');
+    let package_name = import_trimmed.rsplit('/').next().unwrap_or(import_trimmed);
+    let pattern = format!("{}.", package_name);
+    code.contains(&pattern)
+}
+
 const SESSION_MAIN_FILE: &str = "main.go";
 
 struct GoSession {
@@ -270,22 +277,21 @@ impl GoSession {
         } else {
             let mut source = String::from("package main\n\n");
 
-            if !self.imports.is_empty() {
+            let used_imports: Vec<_> = self
+                .imports
+                .iter()
+                .filter(|import| import_is_used_in_code(import, code))
+                .cloned()
+                .collect();
+
+            if !used_imports.is_empty() {
                 source.push_str("import (\n");
-                for import in &self.imports {
+                for import in &used_imports {
                     source.push_str("\t");
                     source.push_str(import);
                     source.push('\n');
                 }
                 source.push_str(")\n\n");
-            }
-
-            for item in &self.items {
-                source.push_str(item);
-                if !item.ends_with('\n') {
-                    source.push('\n');
-                }
-                source.push('\n');
             }
 
             source.push_str(code);
