@@ -217,7 +217,7 @@ struct CSharpSession {
 impl CSharpSession {
     fn render_source(&self) -> String {
         let mut source = String::from(
-            "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading.Tasks;\n#nullable disable\n",
+            "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Text;\nusing System.Threading.Tasks;\n#nullable disable\n\nstatic void __run_print(object value)\n{\n    if (value is null)\n    {\n        Console.WriteLine(\"null\");\n        return;\n    }\n\n    if (value is string s)\n    {\n        Console.WriteLine(s);\n        return;\n    }\n\n    // Pretty-print enumerables: [a, b, c]\n    if (value is System.Collections.IEnumerable enumerable && value is not string)\n    {\n        var sb = new StringBuilder();\n        sb.Append('[');\n        var first = true;\n        foreach (var item in enumerable)\n        {\n            if (!first) sb.Append(\", \");\n            first = false;\n            sb.Append(item is null ? \"null\" : item.ToString());\n        }\n        sb.Append(']');\n        Console.WriteLine(sb.ToString());\n        return;\n    }\n\n    Console.WriteLine(value);\n}\n",
         );
         for snippet in &self.snippets {
             source.push_str(snippet);
@@ -359,10 +359,18 @@ fn should_treat_as_expression(code: &str) -> bool {
     if trimmed.contains('\n') {
         return false;
     }
-    if trimmed.ends_with(';') || trimmed.contains(';') {
+
+
+    let trimmed = trimmed.trim_end();
+    let without_trailing_semicolon = trimmed.strip_suffix(';').unwrap_or(trimmed).trim_end();
+    if without_trailing_semicolon.is_empty() {
         return false;
     }
-    let lowered = trimmed.to_ascii_lowercase();
+    if without_trailing_semicolon.contains(';') {
+        return false;
+    }
+
+    let lowered = without_trailing_semicolon.to_ascii_lowercase();
     const KEYWORDS: [&str; 17] = [
         "using ",
         "namespace ",
@@ -388,34 +396,93 @@ fn should_treat_as_expression(code: &str) -> bool {
     if lowered.starts_with("return ") || lowered.starts_with("throw ") {
         return false;
     }
-    if trimmed.starts_with("Console.") || trimmed.starts_with("System.Console.") {
+    if without_trailing_semicolon.starts_with("Console.")
+        || without_trailing_semicolon.starts_with("System.Console.")
+    {
         return false;
     }
 
-    if trimmed == "true" || trimmed == "false" {
-        return true;
-    }
-    if trimmed.parse::<f64>().is_ok() {
-        return true;
-    }
-    if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
+
+    if lowered.starts_with("new ") {
         return true;
     }
 
-    if trimmed.contains("==")
-        || trimmed.contains("!=")
-        || trimmed.contains("<=")
-        || trimmed.contains(">=")
-        || trimmed.contains("&&")
-        || trimmed.contains("||")
+    if without_trailing_semicolon.contains("++") || without_trailing_semicolon.contains("--") {
+        return false;
+    }
+
+    if without_trailing_semicolon.contains('=')
+        && !without_trailing_semicolon.contains("==")
+        && !without_trailing_semicolon.contains("!=")
+        && !without_trailing_semicolon.contains("<=")
+        && !without_trailing_semicolon.contains(">=")
+        && !without_trailing_semicolon.contains("=>")
+    {
+        return false;
+    }
+
+    const DECL_PREFIXES: [&str; 19] = [
+        "var ", "bool ", "byte ", "sbyte ", "char ", "short ", "ushort ", "int ", "uint ", "long ",
+        "ulong ", "float ", "double ", "decimal ", "string ", "object ", "dynamic ", "nint ",
+        "nuint ",
+    ];
+    if DECL_PREFIXES.iter().any(|prefix| lowered.starts_with(prefix)) {
+        return false;
+    }
+
+    let expr = without_trailing_semicolon;
+
+    if expr == "true" || expr == "false" {
+        return true;
+    }
+    if expr.parse::<f64>().is_ok() {
+        return true;
+    }
+    if (expr.starts_with('"') || expr.starts_with("$\"")) && expr.ends_with('"') && expr.len() >= 2 {
+        return true;
+    }
+    if expr.starts_with('\'') && expr.ends_with('\'') && expr.len() >= 2 {
+        return true;
+    }
+
+
+    if expr.contains('(') && expr.ends_with(')') {
+        return true;
+    }
+   
+    if expr.contains('[') && expr.ends_with(']') {
+        return true;
+    }
+
+    if expr.contains('.')
+        && expr
+            .chars()
+            .all(|c| !c.is_whitespace() && c != '{' && c != '}' && c != ';')
+        && expr
+            .chars()
+            .last()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
     {
         return true;
     }
-    if trimmed.chars().any(|c| "+-*/%<>^|&".contains(c)) {
+
+    if expr.contains("==")
+        || expr.contains("!=")
+        || expr.contains("<=")
+        || expr.contains(">=")
+        || expr.contains("&&")
+        || expr.contains("||")
+    {
+        return true;
+    }
+    if expr.contains('?') && expr.contains(':') {
+        return true;
+    }
+    if expr.chars().any(|c| "+-*/%<>^|&".contains(c)) {
         return true;
     }
 
-    if trimmed
+    if expr
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
     {
@@ -426,14 +493,54 @@ fn should_treat_as_expression(code: &str) -> bool {
 }
 
 fn wrap_expression(code: &str, index: usize) -> String {
-    format!("var __repl_val_{index} = ({code});\nConsole.WriteLine(__repl_val_{index});\n")
+    let expr = code.trim().trim_end_matches(';').trim_end();
+    let expr = match expr {
+        // `var x = null;` is not legal in C# because the type can't be inferred.
+        "null" => "(object)null",
+        // `var x = default;` also has no target type.
+        "default" => "(object)null",
+        other => other,
+    };
+    format!("var __repl_val_{index} = ({expr});\n__run_print(__repl_val_{index});\n")
 }
 
 fn prepare_statement(code: &str) -> String {
-    let mut snippet = code.to_string();
-    if !snippet.ends_with('\n') {
-        snippet.push('\n');
+    let trimmed_end = code.trim_end_matches(['\r', '\n']);
+    if trimmed_end.contains('\n') {
+        let mut snippet = trimmed_end.to_string();
+        if !snippet.ends_with('\n') {
+            snippet.push('\n');
+        }
+        return snippet;
     }
+
+    let line = trimmed_end.trim();
+    if line.is_empty() {
+        return "\n".to_string();
+    }
+
+
+    let lowered = line.to_ascii_lowercase();
+    let starts_with_control = [
+        "if ", "for ", "while ", "switch ", "try", "catch", "finally", "else", "do", "using ",
+        "namespace ", "class ", "struct ", "record ", "enum ", "interface ",
+    ]
+    .iter()
+    .any(|kw| lowered.starts_with(kw));
+
+    let looks_like_expr_stmt = line.ends_with("++")
+        || line.ends_with("--")
+        || line.starts_with("++")
+        || line.starts_with("--")
+        || line.contains('=')
+        || (line.contains('(') && line.ends_with(')'));
+
+    let mut snippet = String::new();
+    snippet.push_str(line);
+    if !line.ends_with(';') && !starts_with_control && looks_like_expr_stmt {
+        snippet.push(';');
+    }
+    snippet.push('\n');
     snippet
 }
 

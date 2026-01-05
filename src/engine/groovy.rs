@@ -294,8 +294,8 @@ impl LanguageSession for GroovySession {
             });
         }
 
-        if should_treat_as_expression(trimmed) {
-            let snippet = wrap_expression(trimmed, self.statements.len());
+
+        if let Some(snippet) = rewrite_with_tail_capture(code, self.statements.len()) {
             let outcome = self.run_snippet(snippet)?;
             if outcome.exit_code.unwrap_or(0) == 0 {
                 return Ok(outcome);
@@ -321,7 +321,8 @@ fn ensure_trailing_newline(code: &str) -> String {
 }
 
 fn wrap_expression(code: &str, index: usize) -> String {
-    format!("def __run_value_{index} = ({code});\nprintln(__run_value_{index});\n")
+    let expr = code.trim().trim_end_matches(';').trim_end();
+    format!("def __run_value_{index} = ({expr});\nprintln(__run_value_{index});\n")
 }
 
 fn should_treat_as_expression(code: &str) -> bool {
@@ -332,20 +333,24 @@ fn should_treat_as_expression(code: &str) -> bool {
     if trimmed.contains('\n') {
         return false;
     }
-    if trimmed.ends_with('{') || trimmed.ends_with('}') {
+
+    let trimmed = trimmed.trim_end();
+    let without_trailing_semicolon = trimmed.strip_suffix(';').unwrap_or(trimmed).trim_end();
+    if without_trailing_semicolon.is_empty() {
+        return false;
+    }
+    if without_trailing_semicolon.contains(';') {
         return false;
     }
 
-    let lowered = trimmed.to_ascii_lowercase();
-    const STATEMENT_PREFIXES: [&str; 17] = [
+    let lowered = without_trailing_semicolon.to_ascii_lowercase();
+    const STATEMENT_PREFIXES: [&str; 15] = [
         "import ",
         "package ",
         "class ",
         "interface ",
         "enum ",
         "trait ",
-        "def ",
-        "if ",
         "for ",
         "while ",
         "switch ",
@@ -363,7 +368,18 @@ fn should_treat_as_expression(code: &str) -> bool {
         return false;
     }
 
-    if trimmed.starts_with("//") {
+    if lowered.starts_with("def ") {
+        let rest = lowered.trim_start_matches("def ").trim_start();
+        if rest.contains('(') && !rest.contains('=') {
+            return false;
+        }
+    }
+
+    if lowered.starts_with("if ") {
+        return lowered.contains(" else ");
+    }
+
+    if without_trailing_semicolon.starts_with("//") {
         return false;
     }
 
@@ -374,17 +390,156 @@ fn should_treat_as_expression(code: &str) -> bool {
         return false;
     }
 
-    if trimmed.contains('=')
-        && !trimmed.contains("==")
-        && !trimmed.contains("!=")
-        && !trimmed.contains(">=")
-        && !trimmed.contains("<=")
-        && !trimmed.contains("=>")
-    {
-        return false;
+    true
+}
+
+fn rewrite_if_expression(expr: &str) -> Option<String> {
+    let trimmed = expr.trim();
+    let lowered = trimmed.to_ascii_lowercase();
+    if !lowered.starts_with("if ") {
+        return None;
+    }
+    let open = trimmed.find('(')?;
+    let mut depth = 0usize;
+    let mut close: Option<usize> = None;
+    for (i, ch) in trimmed.chars().enumerate().skip(open) {
+        if ch == '(' {
+            depth += 1;
+        } else if ch == ')' {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                close = Some(i);
+                break;
+            }
+        }
+    }
+    let close = close?;
+    let cond = trimmed[open + 1..close].trim();
+    let rest = trimmed[close + 1..].trim();
+    let else_pos = rest.to_ascii_lowercase().rfind(" else ")?;
+    let then_part = rest[..else_pos].trim();
+    let else_part = rest[else_pos + " else ".len()..].trim();
+    if cond.is_empty() || then_part.is_empty() || else_part.is_empty() {
+        return None;
+    }
+    Some(format!("(({cond}) ? ({then_part}) : ({else_part}))"))
+}
+
+fn is_closure_literal_without_params(expr: &str) -> bool {
+    let trimmed = expr.trim();
+    trimmed.starts_with('{') && trimmed.ends_with('}') && !trimmed.contains("->")
+}
+
+fn split_semicolons_outside_quotes(line: &str) -> Vec<&str> {
+    let bytes = line.as_bytes();
+    let mut parts: Vec<&str> = Vec::new();
+    let mut start = 0usize;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        match b {
+            b'\\' if in_single || in_double => escape = true,
+            b'\'' if !in_double => in_single = !in_single,
+            b'"' if !in_single => in_double = !in_double,
+            b';' if !in_single && !in_double => {
+                parts.push(&line[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&line[start..]);
+    parts
+}
+
+fn rewrite_with_tail_capture(code: &str, index: usize) -> Option<String> {
+    let source = code.trim_end_matches(['\r', '\n']);
+    if source.trim().is_empty() {
+        return None;
     }
 
-    true
+  
+    let trimmed = source.trim();
+    if trimmed.starts_with('{') && trimmed.ends_with('}') && !trimmed.contains("->") {
+        let expr = trimmed.trim_end_matches(';').trim_end();
+        let invoke = format!("({expr})()");
+        return Some(wrap_expression(&invoke, index));
+    }
+
+
+    if !source.contains('\n') && source.contains(';') {
+        let parts = split_semicolons_outside_quotes(source);
+        if parts.len() >= 2 {
+            let tail = parts.last().unwrap_or(&"").trim();
+            if !tail.is_empty() {
+                let without_comment = strip_inline_comment(tail).trim();
+                if should_treat_as_expression(without_comment) {
+                    let mut expr = without_comment.trim_end_matches(';').trim_end().to_string();
+                    if let Some(rewritten) = rewrite_if_expression(&expr) {
+                        expr = rewritten;
+                    } else if is_closure_literal_without_params(&expr) {
+                        expr = format!("({expr})()");
+                    }
+
+                    let mut snippet = String::new();
+                    let prefix = parts[..parts.len() - 1]
+                        .iter()
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(";\n");
+                    if !prefix.is_empty() {
+                        snippet.push_str(&prefix);
+                        snippet.push_str(";\n");
+                    }
+                    snippet.push_str(&wrap_expression(&expr, index));
+                    return Some(snippet);
+                }
+            }
+        }
+    }
+
+    let lines: Vec<&str> = source.lines().collect();
+    for i in (0..lines.len()).rev() {
+        let raw_line = lines[i];
+        let trimmed_line = raw_line.trim();
+        if trimmed_line.is_empty() {
+            continue;
+        }
+        if trimmed_line.starts_with("//") {
+            continue;
+        }
+        let without_comment = strip_inline_comment(trimmed_line).trim();
+        if without_comment.is_empty() {
+            continue;
+        }
+
+        if !should_treat_as_expression(without_comment) {
+            break;
+        }
+
+        let mut expr = without_comment.trim_end_matches(';').trim_end().to_string();
+        if let Some(rewritten) = rewrite_if_expression(&expr) {
+            expr = rewritten;
+        } else if is_closure_literal_without_params(&expr) {
+            expr = format!("({expr})()");
+        }
+
+        let mut snippet = String::new();
+        if i > 0 {
+            snippet.push_str(&lines[..i].join("\n"));
+            snippet.push('\n');
+        }
+        snippet.push_str(&wrap_expression(&expr, index));
+        return Some(snippet);
+    }
+
+    None
 }
 
 fn diff_output(previous: &str, current: &str) -> String {

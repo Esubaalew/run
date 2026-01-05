@@ -74,9 +74,13 @@ pub fn run_repl(
     println!("run universal REPL. Type :help for commands.");
 
     let mut state = ReplState::new(initial_language, registry, detect_enabled)?;
+    let mut pending: Option<PendingInput> = None;
 
     loop {
-        let prompt = state.prompt();
+        let prompt = match &pending {
+            Some(p) => p.prompt(),
+            None => state.prompt(),
+        };
 
         if let Some(helper) = editor.helper_mut() {
             helper.update_language(state.current_language().canonical_id().to_string());
@@ -84,21 +88,62 @@ pub fn run_repl(
 
         match editor.readline(&prompt) {
             Ok(line) => {
-                let trimmed = line.trim_end();
-                if trimmed.is_empty() {
+                // Keep indentation and internal whitespace; only strip the trailing newline that
+                // comes from readline.
+                let raw = line.trim_end_matches(['\r', '\n']);
+
+                // While collecting multiline input, allow cancelling with :cancel
+                if let Some(p) = pending.as_mut() {
+                    if raw.trim() == ":cancel" {
+                        pending = None;
+                        continue;
+                    }
+
+                    p.push_line(raw);
+                    if p.needs_more_input(state.current_language().canonical_id()) {
+                        continue;
+                    }
+
+                    let code = p.take();
+                    pending = None;
+                    let trimmed = code.trim_end();
+                    if !trimmed.is_empty() {
+                        let _ = editor.add_history_entry(trimmed);
+                        state.execute_snippet(trimmed)?;
+                    }
                     continue;
                 }
-                let _ = editor.add_history_entry(trimmed);
-                if trimmed.starts_with(':') {
+
+                // No pending multiline input.
+                if raw.trim().is_empty() {
+                    continue;
+                }
+
+                // Meta commands are only recognized in "single line" mode.
+                if raw.trim_start().starts_with(':') {
+                    let trimmed = raw.trim();
+                    let _ = editor.add_history_entry(trimmed);
                     if state.handle_meta(trimmed)? {
                         break;
                     }
-                } else {
-                    state.execute_snippet(trimmed)?;
+                    continue;
                 }
+
+                // Start multiline mode if this line looks incomplete for the current language.
+                let mut p = PendingInput::new();
+                p.push_line(raw);
+                if p.needs_more_input(state.current_language().canonical_id()) {
+                    pending = Some(p);
+                    continue;
+                }
+
+                let trimmed = raw.trim_end();
+                let _ = editor.add_history_entry(trimmed);
+                state.execute_snippet(trimmed)?;
             }
             Err(ReadlineError::Interrupted) => {
                 println!("^C");
+                pending = None;
                 continue;
             }
             Err(ReadlineError::Eof) => {
@@ -124,6 +169,125 @@ struct ReplState {
     sessions: HashMap<String, Box<dyn LanguageSession>>, // keyed by canonical id
     current_language: LanguageSpec,
     detect_enabled: bool,
+}
+
+struct PendingInput {
+    buf: String,
+}
+
+impl PendingInput {
+    fn new() -> Self {
+        Self { buf: String::new() }
+    }
+
+    fn prompt(&self) -> String {
+        "... ".to_string()
+    }
+
+    fn push_line(&mut self, line: &str) {
+        self.buf.push_str(line);
+        self.buf.push('\n');
+    }
+
+    fn take(&mut self) -> String {
+        std::mem::take(&mut self.buf)
+    }
+
+    fn needs_more_input(&self, language_id: &str) -> bool {
+        needs_more_input(language_id, &self.buf)
+    }
+}
+
+fn needs_more_input(language_id: &str, code: &str) -> bool {
+    // If the terminal delivered a full paste that already contains multiple lines, we still want
+    // to avoid running it until it looks complete.
+    match language_id {
+        "python" | "py" | "python3" | "py3" => needs_more_input_python(code),
+        // Generic: keep accepting lines while delimiters are unbalanced.
+        _ => has_unclosed_delimiters(code),
+    }
+}
+
+fn needs_more_input_python(code: &str) -> bool {
+    if has_unclosed_delimiters(code) {
+        return true;
+    }
+
+    // For Python blocks, require a blank line to end the block (like the real interactive REPL).
+    // This solves `def foo():` / `if ...:` / etc where the user types line-by-line.
+    let mut last_nonempty: Option<&str> = None;
+    let mut saw_colon_header = false;
+
+    for line in code.lines() {
+        let trimmed = line.trim_end();
+        if trimmed.trim().is_empty() {
+            continue;
+        }
+        last_nonempty = Some(trimmed);
+        if trimmed.ends_with(':') {
+            saw_colon_header = true;
+        }
+    }
+
+    if !saw_colon_header {
+        return false;
+    }
+
+    // If the last line typed is blank, treat the block as complete.
+    if code.ends_with("\n\n") {
+        return false;
+    }
+
+    // Otherwise keep collecting until the user enters a blank line.
+    last_nonempty.is_some()
+}
+
+fn has_unclosed_delimiters(code: &str) -> bool {
+    let mut paren = 0i32;
+    let mut bracket = 0i32;
+    let mut brace = 0i32;
+
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+
+    for ch in code.chars() {
+        if escape {
+            escape = false;
+            continue;
+        }
+
+        if in_single {
+            if ch == '\\' {
+                escape = true;
+            } else if ch == '\'' {
+                in_single = false;
+            }
+            continue;
+        }
+        if in_double {
+            if ch == '\\' {
+                escape = true;
+            } else if ch == '"' {
+                in_double = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '\'' => in_single = true,
+            '"' => in_double = true,
+            '(' => paren += 1,
+            ')' => paren -= 1,
+            '[' => bracket += 1,
+            ']' => bracket -= 1,
+            '{' => brace += 1,
+            '}' => brace -= 1,
+            _ => {}
+        }
+    }
+
+    paren > 0 || bracket > 0 || brace > 0
 }
 
 impl ReplState {
@@ -467,5 +631,25 @@ mod tests {
                 "alias {alias} should resolve to a registered language"
             );
         }
+    }
+
+    #[test]
+    fn python_multiline_def_requires_blank_line_to_execute() {
+        let mut p = PendingInput::new();
+        p.push_line("def fib(n):");
+        assert!(p.needs_more_input("python"));
+        p.push_line("    return n");
+        assert!(p.needs_more_input("python"));
+        p.push_line(""); // blank line ends block
+        assert!(!p.needs_more_input("python"));
+    }
+
+    #[test]
+    fn generic_multiline_tracks_unclosed_delimiters() {
+        let mut p = PendingInput::new();
+        p.push_line("func(");
+        assert!(p.needs_more_input("csharp"));
+        p.push_line(")");
+        assert!(!p.needs_more_input("csharp"));
     }
 }

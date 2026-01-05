@@ -338,7 +338,8 @@ impl LanguageSession for TypeScriptSession {
 }
 
 fn wrap_expression(code: &str) -> String {
-    format!("__print(await ({}));\n", code)
+    let expr = code.trim().trim_end_matches(';').trim_end();
+    format!("__print(await ({}));\n", expr)
 }
 
 fn prepare_statement(code: &str) -> String {
@@ -357,9 +358,16 @@ fn should_treat_as_expression(code: &str) -> bool {
     if trimmed.contains('\n') {
         return false;
     }
-    if trimmed.ends_with(';') || trimmed.contains(';') {
+
+    let trimmed = trimmed.trim_end();
+    let without_trailing_semicolon = trimmed.strip_suffix(';').unwrap_or(trimmed).trim_end();
+    if without_trailing_semicolon.is_empty() {
         return false;
     }
+    if without_trailing_semicolon.contains(';') {
+        return false;
+    }
+
     const KEYWORDS: [&str; 11] = [
         "const ",
         "let ",
@@ -373,13 +381,16 @@ fn should_treat_as_expression(code: &str) -> bool {
         "if ",
         "while ",
     ];
-    if KEYWORDS
-        .iter()
-        .any(|kw| trimmed.starts_with(kw) || trimmed.starts_with(&kw.to_ascii_uppercase()))
+    if KEYWORDS.iter().any(|kw| {
+        without_trailing_semicolon.starts_with(kw)
+            || without_trailing_semicolon.starts_with(&kw.to_ascii_uppercase())
+    })
     {
         return false;
     }
-    if trimmed.starts_with("return ") || trimmed.starts_with("throw ") {
+    if without_trailing_semicolon.starts_with("return ")
+        || without_trailing_semicolon.starts_with("throw ")
+    {
         return false;
     }
     true
