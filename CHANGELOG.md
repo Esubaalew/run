@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.3.1] - 2026-01-05
+
+### Fixed
+
+- C#: REPL now prints more expression forms (method calls, member access like `"Hello".Length`, ternary `?:`) and better handles trailing semicolons.
+- C#: Improve REPL output for `null` and common collection results.
+- Groovy: REPL now behaves closer to `groovysh` by printing tail expressions (including assignment expressions) and supporting more expression-y forms.
+- TypeScript: REPL expression printing now tolerates a single trailing semicolon.
+- REPL: Interactive multiline input is now supported (e.g. typing Python `def` blocks line-by-line) via a continuation prompt; use a blank line to finish blocks and `:cancel` to abort.
+
+### Testing
+
+- Add regression suites for C#, Groovy, and TypeScript REPL expression printing and semantics.
+
 ## [0.3.0] - 2025-10-31
 
 ### Added
@@ -61,7 +75,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/Esubaalew/run/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Esubaalew/run/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Esubaalew/run/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Esubaalew/run/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Esubaalew/run/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Esubaalew/run/compare/v0.1.1...v0.2.0
