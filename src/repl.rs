@@ -88,18 +88,16 @@ pub fn run_repl(
 
         match editor.readline(&prompt) {
             Ok(line) => {
-                // Keep indentation and internal whitespace; only strip the trailing newline that
-                // comes from readline.
+              
                 let raw = line.trim_end_matches(['\r', '\n']);
 
-                // While collecting multiline input, allow cancelling with :cancel
                 if let Some(p) = pending.as_mut() {
                     if raw.trim() == ":cancel" {
                         pending = None;
                         continue;
                     }
 
-                    p.push_line(raw);
+                    p.push_line_auto(state.current_language().canonical_id(), raw);
                     if p.needs_more_input(state.current_language().canonical_id()) {
                         continue;
                     }
@@ -189,6 +187,16 @@ impl PendingInput {
         self.buf.push('\n');
     }
 
+    fn push_line_auto(&mut self, language_id: &str, line: &str) {
+        match language_id {
+            "python" | "py" | "python3" | "py3" => {
+                let adjusted = python_auto_indent(line, &self.buf);
+                self.push_line(&adjusted);
+            }
+            _ => self.push_line(line),
+        }
+    }
+
     fn take(&mut self) -> String {
         std::mem::take(&mut self.buf)
     }
@@ -199,13 +207,52 @@ impl PendingInput {
 }
 
 fn needs_more_input(language_id: &str, code: &str) -> bool {
-    // If the terminal delivered a full paste that already contains multiple lines, we still want
-    // to avoid running it until it looks complete.
+
     match language_id {
         "python" | "py" | "python3" | "py3" => needs_more_input_python(code),
-        // Generic: keep accepting lines while delimiters are unbalanced.
-        _ => has_unclosed_delimiters(code),
+       
+        _ => has_unclosed_delimiters(code) || generic_line_looks_incomplete(code),
     }
+}
+
+fn generic_line_looks_incomplete(code: &str) -> bool {
+    let mut last: Option<&str> = None;
+    for line in code.lines().rev() {
+        let trimmed = line.trim_end();
+        if trimmed.trim().is_empty() {
+            continue;
+        }
+        last = Some(trimmed);
+        break;
+    }
+    let Some(line) = last else { return false };
+    let line = line.trim();
+    if line.is_empty() {
+        return false;
+    }
+
+    if line.ends_with('\\') {
+        return true;
+    }
+
+    const TAILS: [&str; 24] = [
+        "=", "+", "-", "*", "/", "%", "&", "|", "^", "!", "<", ">",
+        "&&", "||", "??", "?:", "?", ":", ".", ",",
+        "=>", "->", "::", "..",
+    ];
+    if TAILS.iter().any(|tok| line.ends_with(tok)) {
+        return true;
+    }
+
+    const PREFIXES: [&str; 9] = [
+        "return", "throw", "yield", "await", "import", "from", "export", "case", "else",
+    ];
+    let lowered = line.to_ascii_lowercase();
+    if PREFIXES.iter().any(|kw| lowered == *kw || lowered.ends_with(&format!(" {kw}"))) {
+        return true;
+    }
+
+    false
 }
 
 fn needs_more_input_python(code: &str) -> bool {
@@ -213,8 +260,7 @@ fn needs_more_input_python(code: &str) -> bool {
         return true;
     }
 
-    // For Python blocks, require a blank line to end the block (like the real interactive REPL).
-    // This solves `def foo():` / `if ...:` / etc where the user types line-by-line.
+   
     let mut last_nonempty: Option<&str> = None;
     let mut saw_colon_header = false;
 
@@ -233,13 +279,53 @@ fn needs_more_input_python(code: &str) -> bool {
         return false;
     }
 
-    // If the last line typed is blank, treat the block as complete.
     if code.ends_with("\n\n") {
         return false;
     }
 
-    // Otherwise keep collecting until the user enters a blank line.
     last_nonempty.is_some()
+}
+
+fn python_auto_indent(line: &str, existing: &str) -> String {
+    let trimmed = line.trim_end_matches(['\r', '\n']);
+    let raw = trimmed;
+    if raw.trim().is_empty() {
+        return raw.to_string();
+    }
+
+    if raw.starts_with(' ') || raw.starts_with('\t') {
+        return raw.to_string();
+    }
+
+    let mut last_nonempty: Option<&str> = None;
+    for l in existing.lines().rev() {
+        if l.trim().is_empty() {
+            continue;
+        }
+        last_nonempty = Some(l);
+        break;
+    }
+
+    let Some(prev) = last_nonempty else {
+        return raw.to_string();
+    };
+    let prev_trimmed = prev.trim_end();
+
+    if !prev_trimmed.ends_with(':') {
+        return raw.to_string();
+    }
+
+    let lowered = raw.trim().to_ascii_lowercase();
+    if lowered.starts_with("else:") || lowered.starts_with("elif ") || lowered.starts_with("except") || lowered.starts_with("finally:") {
+        return raw.to_string();
+    }
+
+    let base_indent = prev
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .collect::<String>();
+
+    format!("{base_indent}    {raw}")
 }
 
 fn has_unclosed_delimiters(code: &str) -> bool {
@@ -645,11 +731,41 @@ mod tests {
     }
 
     #[test]
+    fn python_auto_indents_first_line_after_colon_header() {
+        let mut p = PendingInput::new();
+        p.push_line("def cool():");
+        p.push_line_auto("python", r#"print("ok")"#);
+        let code = p.take();
+        assert!(
+            code.contains("    print(\"ok\")\n"),
+            "expected auto-indented print line, got:\n{code}"
+        );
+    }
+
+    #[test]
     fn generic_multiline_tracks_unclosed_delimiters() {
         let mut p = PendingInput::new();
         p.push_line("func(");
         assert!(p.needs_more_input("csharp"));
         p.push_line(")");
+        assert!(!p.needs_more_input("csharp"));
+    }
+
+    #[test]
+    fn generic_multiline_tracks_trailing_equals() {
+        let mut p = PendingInput::new();
+        p.push_line("let x =");
+        assert!(p.needs_more_input("rust"));
+        p.push_line("10;");
+        assert!(!p.needs_more_input("rust"));
+    }
+
+    #[test]
+    fn generic_multiline_tracks_trailing_dot() {
+        let mut p = PendingInput::new();
+        p.push_line("foo.");
+        assert!(p.needs_more_input("csharp"));
+        p.push_line("Bar()");
         assert!(!p.needs_more_input("csharp"));
     }
 }
