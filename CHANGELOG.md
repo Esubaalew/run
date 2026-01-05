@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.3.2] - 2026-01-05
+
+### Fixed
+
+- REPL: Improve interactive multiline typing across languages (continue when the line is incomplete, not just when delimiters are unbalanced).
+- Python REPL: Auto-indent the first line after `def/if/for/...:` headers to avoid `IndentationError` when typing blocks line-by-line.
+
 ## [0.3.1] - 2026-01-05
 
 ### Fixed
@@ -25,6 +32,7 @@ Nothing yet.
 ### Added
 
 - **Syntax highlighting** for all supported languages in the REPL with real-time color coding
+
   - Automatically adapts when switching languages
 
 - Lua REPL support for `= expr` syntax to evaluate and print expressions
@@ -75,7 +83,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/Esubaalew/run/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Esubaalew/run/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/Esubaalew/run/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Esubaalew/run/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Esubaalew/run/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Esubaalew/run/compare/v0.2.0...v0.2.1
