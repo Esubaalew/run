@@ -120,7 +120,6 @@ impl LanguageEngine for GoEngine {
 
         let output = self.execute_with_path(binary, &source_path)?;
 
-        // Ensure temp_dir stays in scope until after the command runs
         drop(temp_dir);
 
         Ok(ExecutionOutcome {

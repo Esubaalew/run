@@ -1,2 +1,34 @@
+# Build artifacts
 /target
+registry-server/target/
+
+# IDE
 /.vscode
+.idea/
+*.iml
+
+# Editor swap files
+**/*.swp
+**/*.swo
+
+# OS files
+**/.DS_Store
+
+# Python
+**/.venv/
+**/__pycache__/
+*.pyc
+
+# Rust
+*.rlib
+*.rmeta
+
+# WebAssembly binaries (build from source)
+*.wasm
+
+# Logs
+*.log
+
+# Exclude incomplete/redundant directories
+/runtime/
+/examples/swap-demo/

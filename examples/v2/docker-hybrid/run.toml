@@ -1,0 +1,27 @@
+[package]
+name = "web-app"
+version = "1.0.0"
+description = "Hybrid Run + Docker web application"
+
+[[component]]
+name = "web"
+source = "web/src/lib.rs"
+language = "rust"
+wit = "web/wit/http.wit"
+
+[component.web.env]
+DATABASE_URL = "postgres://postgres:secret@localhost:5432/mydb"
+REDIS_URL = "redis://localhost:6379"
+
+# Docker bridge for stateful services
+[bridge]
+enabled = true
+
+[bridge.postgres]
+image = "postgres:15"
+ports = { 5432 = 5432 }
+env = { POSTGRES_PASSWORD = "secret", POSTGRES_DB = "mydb" }
+
+[bridge.redis]
+image = "redis:7"
+ports = { 6379 = 6379 }

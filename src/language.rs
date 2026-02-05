@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use once_cell::sync::Lazy;
 
-/// Canonical identifier for a supported language along with user-provided token.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LanguageSpec {
     original: String,
@@ -129,7 +128,6 @@ pub fn is_language_token(token: &str) -> bool {
     language_alias_lookup(token).is_some()
 }
 
-/// All canonical languages registered in the alias table.
 pub fn known_canonical_languages() -> Vec<&'static str> {
     let mut unique: Vec<_> = ALIASES.values().copied().collect();
     unique.sort_unstable();

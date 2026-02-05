@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-/// Attempt to guess the language from a code snippet.
 pub fn detect_language_from_snippet(code: &str) -> Option<&'static str> {
     let trimmed = code.trim_start();
     if trimmed.is_empty() {

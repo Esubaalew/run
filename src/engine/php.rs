@@ -317,11 +317,6 @@ fn strip_leading_php_prompt(line: &str) -> String {
 }
 
 fn normalize_php_snippet(code: &str) -> String {
-    // Normalize user-provided snippets for the interactive shell by
-    // removing leading opening tags (`<?php`, `<?`) and trailing closing
-    // tags (`?>`). This lets users paste full scripts while keeping the
-    // session state intact, even though it means tags appearing inside
-    // string literals will also be stripped.
     let mut lines: Vec<String> = code.lines().map(strip_leading_php_prompt).collect();
 
     while let Some(first) = lines.first() {
@@ -367,7 +362,7 @@ fn normalize_php_snippet(code: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PhpSession, normalize_php_snippet};
+    use super::{normalize_php_snippet, PhpSession};
 
     #[test]
     fn strips_prompt_prefixes() {

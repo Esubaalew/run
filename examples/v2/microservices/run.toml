@@ -1,0 +1,116 @@
+# Run 2.0 Microservices Example
+#
+# This demonstrates Run 2.0 replacing Docker Compose for microservices.
+# All services are WASI components running in a single process.
+# Inter-service calls are function calls, not HTTP.
+
+[project]
+name = "microservices-example"
+version = "1.0.0"
+description = "Microservices with Run 2.0 - no Docker required"
+
+[dependencies]
+"wasi:http" = "0.2.0"
+"wasi:io" = "0.2.0"
+"wasi:filesystem" = "0.2.0"
+"wasi:random" = "0.2.0"
+"wasi:clocks" = "0.2.0"
+
+# ==============================================================================
+# Services (all WASI components)
+# ==============================================================================
+
+[components.api-gateway]
+source = "services/api-gateway/src/lib.rs"
+language = "rust"
+wit = "wit/api.wit"
+capabilities = [
+    "net:listen:8080",
+    "stdout",
+    "stderr",
+    "clock"
+]
+
+[components.auth-service]
+source = "services/auth/src/lib.rs"
+language = "rust"
+wit = "wit/api.wit"
+capabilities = [
+    "random",
+    "clock",
+    "stdout"
+]
+
+[components.user-service]
+source = "services/users/src/lib.rs"
+language = "rust"
+wit = "wit/api.wit"
+capabilities = [
+    "fs:read:/data/users",
+    "fs:write:/data/users",
+    "stdout"
+]
+dependencies = ["auth-service"]
+
+# Order and notification services are placeholders
+# Add implementations as needed
+[components.order-service]
+source = "services/orders/src/lib.rs"
+language = "rust"
+wit = "wit/api.wit"
+enabled = false  # Not yet implemented
+capabilities = [
+    "fs:read:/data/orders",
+    "fs:write:/data/orders",
+    "stdout"
+]
+dependencies = ["auth-service", "user-service"]
+
+[components.notification-service]
+source = "services/notifications/src/lib.rs"
+language = "rust"
+wit = "wit/api.wit"
+enabled = false  # Not yet implemented
+capabilities = [
+    "net:connect:smtp.example.com:587",
+    "stdout"
+]
+dependencies = ["user-service"]
+
+# ==============================================================================
+# Docker Fallback (for databases - not yet available as WASM)
+# ==============================================================================
+
+[bridge.postgres]
+# Falls back to Docker only if needed
+image = "postgres:15"
+env = { POSTGRES_PASSWORD = "dev-password" }
+ports = { 5432 = 5432 }
+# This will run in Docker, transparent to components
+
+[bridge.redis]
+image = "redis:7"
+ports = { 6379 = 6379 }
+
+# ==============================================================================
+# Development
+# ==============================================================================
+
+[dev]
+hot_reload = true
+port = 8080
+verbose = false
+watch = [
+    "services/**/*.rs",
+    "services/**/*.wit"
+]
+services = ["api-gateway", "auth-service", "user-service"]
+
+# ==============================================================================
+# Build
+# ==============================================================================
+
+[build]
+output_dir = "dist"
+target = "wasm32-wasip1"
+opt_level = "release"

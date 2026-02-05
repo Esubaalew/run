@@ -292,7 +292,7 @@ impl LanguageSession for LuaSession {
                 language: self.language_id().to_string(),
                 exit_code: None,
                 stdout:
-                    "Lua commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "Lua commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),
@@ -375,7 +375,7 @@ impl LanguageSession for LuaSession {
 
 #[cfg(test)]
 mod tests {
-    use super::{LuaSession, looks_like_expression_snippet, wrap_expression_snippet};
+    use super::{looks_like_expression_snippet, wrap_expression_snippet, LuaSession};
 
     #[test]
     fn diff_outputs_appends_only_suffix() {

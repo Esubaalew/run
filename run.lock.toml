@@ -1,0 +1,43 @@
+# Run Toolchain Lockfile
+# Ensures hermetic, reproducible builds across machines
+
+version = "1"
+
+[toolchains]
+
+[toolchains.cargo-component]
+version = "0.13.2"
+sha256 = "placeholder-for-actual-hash"
+source = "https://github.com/bytecodealliance/cargo-component/releases/download/v0.13.2"
+
+[toolchains.componentize-py]
+version = "0.13.3"
+sha256 = "placeholder-for-actual-hash"
+source = "https://github.com/bytecodealliance/componentize-py/releases/tag/v0.13.3"
+
+[toolchains.jco]
+version = "1.4.0"
+sha256 = "placeholder-for-actual-hash"
+source = "https://github.com/bytecodealliance/jco/releases/tag/v1.4.0"
+
+[toolchains.tinygo]
+version = "0.32.0"
+sha256 = "placeholder-for-actual-hash"
+source = "https://github.com/tinygo-org/tinygo/releases/tag/v0.32.0"
+
+[toolchains.wasm-tools]
+version = "1.210.0"
+sha256 = "placeholder-for-actual-hash"
+source = "https://github.com/bytecodealliance/wasm-tools/releases/tag/v1.210.0"
+
+[toolchains.wasmtime]
+version = "25.0.0"
+sha256 = "placeholder-for-actual-hash"
+source = "https://github.com/bytecodealliance/wasmtime/releases/tag/v25.0.0"
+
+[build]
+# Reproducible build settings
+SOURCE_DATE_EPOCH = 0
+TZ = "UTC"
+LC_ALL = "C"
+RUSTFLAGS = "-C debuginfo=0 -C link-arg=-s"

@@ -207,9 +207,6 @@ fn wrap_inline_kotlin(body: &str) -> String {
         return body.to_string();
     }
 
-    // Pull any leading import/package lines out so they remain at top-level
-    // (imports are not allowed inside a function). We'll keep those lines
-    // verbatim, then wrap the remaining snippet body inside fun main().
     let mut header_lines = Vec::new();
     let mut rest_lines = Vec::new();
     let mut in_header = true;
@@ -622,7 +619,7 @@ impl LanguageSession for KotlinSession {
                 language: self.language_id().to_string(),
                 exit_code: None,
                 stdout:
-                    "Kotlin commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "Kotlin commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),
@@ -665,7 +662,6 @@ impl LanguageSession for KotlinSession {
     }
 
     fn shutdown(&mut self) -> Result<()> {
-        // TempDir cleanup is automatic when dropped.
         Ok(())
     }
 }

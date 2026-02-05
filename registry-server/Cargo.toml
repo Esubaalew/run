@@ -1,0 +1,27 @@
+[package]
+name = "run-registry"
+version = "0.1.0"
+edition = "2021"
+description = "Run 2.0 component registry server"
+
+[[bin]]
+name = "run-registry"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+hex = "0.4"
+anyhow = "1.0"
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = "0.4"
+urlencoding = "2.1"
+semver = "1.0"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "multipart"] }

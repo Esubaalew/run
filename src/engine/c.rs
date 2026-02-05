@@ -576,7 +576,7 @@ impl LanguageSession for CSession {
                 language: self.language_id().to_string(),
                 exit_code: None,
                 stdout:
-                    "C commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "C commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Default::default(),
@@ -857,7 +857,11 @@ fn parse_include(code: &str) -> Option<String> {
         return None;
     }
     let line = trimmed.lines().next()?.trim().to_string();
-    if line.is_empty() { None } else { Some(line) }
+    if line.is_empty() {
+        None
+    } else {
+        Some(line)
+    }
 }
 
 fn is_item_snippet(code: &str) -> bool {

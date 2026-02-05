@@ -1,0 +1,42 @@
+# Run 2.0 Configuration for Polyglot Calculator Example
+#
+# This example demonstrates:
+# 1. Rust component calling Python component
+# 2. Zero handwritten FFI
+# 3. WIT as the universal contract
+# 4. Cross-language composition via Component Model
+
+[project]
+name = "polyglot-calculator"
+version = "1.0.0"
+description = "Cross-language calculator: Rust calling Python"
+authors = ["Run 2.0 Team"]
+license = "Apache-2.0"
+
+[dependencies]
+# WASI interfaces needed
+"wasi:cli" = "0.2.0"
+"wasi:io" = "0.2.0"
+
+[components.calculator]
+# Python calculator implementation
+path = "python-impl/calculator.wasm"
+build = "componentize-py -d calculator.wit -w calculator-world python-impl/calculator.py -o python-impl/calculator.wasm"
+
+[components.caller]
+# Rust caller that uses the calculator
+path = "rust-caller/target/wasm32-wasip1/release/rust_caller.wasm"
+build = "cd rust-caller && cargo component build --release"
+dependencies = ["calculator"]
+
+[dev]
+hot_reload = true
+watch = [
+    "calculator.wit",
+    "python-impl/**/*.py",
+    "rust-caller/src/**/*.rs"
+]
+
+[build]
+output_dir = "dist"
+target = "wasm32-wasip1"

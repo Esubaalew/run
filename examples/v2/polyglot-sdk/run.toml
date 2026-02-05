@@ -1,0 +1,27 @@
+[project]
+name = "polyglot-sdk"
+version = "0.1.0"
+
+[components.greeter-js]
+source = "js"
+language = "javascript"
+capabilities = ["stdout"]
+
+[components.greeter-ts]
+source = "ts"
+language = "typescript"
+capabilities = ["stdout"]
+
+[components.greeter-go]
+source = "go"
+language = "go"
+capabilities = ["stdout"]
+
+[components.greeter-zig]
+source = "zig"
+language = "zig"
+capabilities = ["stdout"]
+
+[dev]
+hot_reload = true
+watch = ["js/**/*.js", "ts/**/*.ts", "go/**/*.go", "zig/**/*.zig", "wit/**/*.wit"]

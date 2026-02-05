@@ -1,0 +1,77 @@
+name: Docker Compatibility
+
+# Manual-only until Docker bridge is fully implemented
+on:
+  workflow_dispatch:
+
+jobs:
+  docker-bridge:
+    name: Docker Bridge Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install Docker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker.io
+          sudo systemctl start docker
+      
+      - name: Build Run CLI
+        run: cargo build --features v2 --release
+      
+      - name: Test Docker availability
+        run: |
+          cargo run --features v2 -- info
+      
+      - name: Start Docker service via Run
+        run: |
+          cargo run --features v2 -- dev --bridge postgres
+      
+      - name: Test hybrid Run + Docker
+        run: |
+          cargo test --features v2 --test docker_bridge
+
+  compose-migration:
+    name: Docker Compose Migration
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      
+      - name: Build Run CLI
+        run: cargo build --features v2 --release
+      
+      - name: Create sample docker-compose.yml
+        run: |
+          cat > docker-compose.yml << 'EOF'
+          version: '3'
+          services:
+            db:
+              image: postgres:15
+              environment:
+                POSTGRES_PASSWORD: secret
+            app:
+              build: .
+              depends_on:
+                - db
+          EOF
+      
+      - name: Migrate compose to run.toml
+        run: |
+          cargo run --features v2 -- compose migrate docker-compose.yml run.toml
+      
+      - name: Verify migration
+        run: |
+          cat run.toml
+          cargo run --features v2 -- info

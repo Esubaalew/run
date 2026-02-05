@@ -1,0 +1,31 @@
+version: '3'
+
+services:
+  web:
+    build: ./web
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://postgres:secret@db:5432/mydb
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: mydb
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+volumes:
+  db-data:

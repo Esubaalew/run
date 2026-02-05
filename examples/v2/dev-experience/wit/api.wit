@@ -1,0 +1,20 @@
+package example:api;
+
+interface http {
+    record request {
+        method: string,
+        path: string,
+        body: list<u8>,
+    }
+
+    record response {
+        status: u16,
+        body: list<u8>,
+    }
+
+    handle: func(request: request) -> response;
+}
+
+world api {
+    export http;
+}

@@ -264,7 +264,7 @@ impl LanguageSession for BashSession {
                 language: self.language_id().to_string(),
                 exit_code: None,
                 stdout:
-                    "Bash commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "Bash commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),
@@ -276,7 +276,6 @@ impl LanguageSession for BashSession {
     }
 
     fn shutdown(&mut self) -> Result<()> {
-        // TempDir cleanup handled automatically.
         Ok(())
     }
 }

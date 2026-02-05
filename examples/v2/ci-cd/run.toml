@@ -1,0 +1,14 @@
+[package]
+name = "reproducible-example"
+version = "1.0.0"
+description = "Reproducible build demonstration"
+
+[[component]]
+name = "hello"
+source = "src/lib.rs"
+language = "rust"
+wit = "wit/hello.wit"
+
+[build]
+reproducible = true
+strip_debug = true

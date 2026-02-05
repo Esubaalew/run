@@ -19,7 +19,11 @@ fn typescript_session_prints_method_call_expression_with_or_without_semicolon() 
     let mut session = engine.start_session().expect("start typescript session");
 
     let out = session.eval(r#"const names = ["dood", "dude"];"#).unwrap();
-    assert!(out.success(), "setup should succeed; stderr:\n{}", out.stderr);
+    assert!(
+        out.success(),
+        "setup should succeed; stderr:\n{}",
+        out.stderr
+    );
 
     let out = session.eval(r#"names.includes("dood")"#).unwrap();
     assert!(
@@ -57,7 +61,11 @@ fn groovy_session_prints_method_call_expression_with_or_without_semicolon() {
     let mut session = engine.start_session().expect("start groovy session");
 
     let out = session.eval(r#"def names = ["dood", "dude"]"#).unwrap();
-    assert!(out.success(), "setup should succeed; stderr:\n{}", out.stderr);
+    assert!(
+        out.success(),
+        "setup should succeed; stderr:\n{}",
+        out.stderr
+    );
 
     let out = session.eval(r#"names.contains("dood")"#).unwrap();
     assert!(
@@ -83,5 +91,3 @@ fn groovy_session_prints_method_call_expression_with_or_without_semicolon() {
         out.stdout
     );
 }
-
-

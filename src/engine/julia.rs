@@ -368,7 +368,7 @@ impl LanguageSession for JuliaSession {
                 language: "julia".to_string(),
                 exit_code: None,
                 stdout:
-                    "Julia commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "Julia commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),

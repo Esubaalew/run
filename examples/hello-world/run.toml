@@ -1,0 +1,13 @@
+[project]
+name = "hello-world"
+version = "1.0.0"
+description = "Simple Run 2.0 example with calculator component"
+
+[components.calculator]
+path = "hello.wasm"
+capabilities = ["stdout", "stderr"]
+
+[dev]
+hot_reload = false
+verbose = true
+port = 3000

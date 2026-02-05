@@ -14,7 +14,9 @@ fn csharp_session_prints_method_call_expressions_with_or_without_semicolon() {
     let engine = CSharpEngine::new();
     let mut session = engine.start_session().expect("start csharp session");
 
-    let out = session.eval(r#"string[] names = {"dood", "dude"};"#).unwrap();
+    let out = session
+        .eval(r#"string[] names = {"dood", "dude"};"#)
+        .unwrap();
     assert!(
         out.success(),
         "declaration should succeed; stderr was:\n{}",
@@ -57,7 +59,11 @@ fn csharp_session_prints_arithmetic_expression_with_trailing_semicolon() {
     let mut session = engine.start_session().expect("start csharp session");
 
     let out = session.eval("int d = 10;").unwrap();
-    assert!(out.success(), "setup should succeed; stderr:\n{}", out.stderr);
+    assert!(
+        out.success(),
+        "setup should succeed; stderr:\n{}",
+        out.stderr
+    );
 
     let out = session.eval("d + 10;").unwrap();
     assert!(
@@ -118,7 +124,11 @@ fn csharp_session_prints_ternary_expression() {
     let mut session = engine.start_session().expect("start csharp session");
 
     let out = session.eval("int n = 7;").unwrap();
-    assert!(out.success(), "setup should succeed; stderr:\n{}", out.stderr);
+    assert!(
+        out.success(),
+        "setup should succeed; stderr:\n{}",
+        out.stderr
+    );
 
     let out = session.eval(r#"n % 2 == 0 ? "even" : "odd""#).unwrap();
     assert!(
@@ -144,5 +154,3 @@ fn csharp_session_prints_ternary_expression() {
         out.stdout
     );
 }
-
-

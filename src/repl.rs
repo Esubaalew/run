@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -88,7 +88,6 @@ pub fn run_repl(
 
         match editor.readline(&prompt) {
             Ok(line) => {
-              
                 let raw = line.trim_end_matches(['\r', '\n']);
 
                 if let Some(p) = pending.as_mut() {
@@ -112,12 +111,10 @@ pub fn run_repl(
                     continue;
                 }
 
-                // No pending multiline input.
                 if raw.trim().is_empty() {
                     continue;
                 }
 
-                // Meta commands are only recognized in "single line" mode.
                 if raw.trim_start().starts_with(':') {
                     let trimmed = raw.trim();
                     let _ = editor.add_history_entry(trimmed);
@@ -127,7 +124,6 @@ pub fn run_repl(
                     continue;
                 }
 
-                // Start multiline mode if this line looks incomplete for the current language.
                 let mut p = PendingInput::new();
                 p.push_line(raw);
                 if p.needs_more_input(state.current_language().canonical_id()) {
@@ -207,10 +203,9 @@ impl PendingInput {
 }
 
 fn needs_more_input(language_id: &str, code: &str) -> bool {
-
     match language_id {
         "python" | "py" | "python3" | "py3" => needs_more_input_python(code),
-       
+
         _ => has_unclosed_delimiters(code) || generic_line_looks_incomplete(code),
     }
 }
@@ -236,9 +231,8 @@ fn generic_line_looks_incomplete(code: &str) -> bool {
     }
 
     const TAILS: [&str; 24] = [
-        "=", "+", "-", "*", "/", "%", "&", "|", "^", "!", "<", ">",
-        "&&", "||", "??", "?:", "?", ":", ".", ",",
-        "=>", "->", "::", "..",
+        "=", "+", "-", "*", "/", "%", "&", "|", "^", "!", "<", ">", "&&", "||", "??", "?:", "?",
+        ":", ".", ",", "=>", "->", "::", "..",
     ];
     if TAILS.iter().any(|tok| line.ends_with(tok)) {
         return true;
@@ -248,7 +242,10 @@ fn generic_line_looks_incomplete(code: &str) -> bool {
         "return", "throw", "yield", "await", "import", "from", "export", "case", "else",
     ];
     let lowered = line.to_ascii_lowercase();
-    if PREFIXES.iter().any(|kw| lowered == *kw || lowered.ends_with(&format!(" {kw}"))) {
+    if PREFIXES
+        .iter()
+        .any(|kw| lowered == *kw || lowered.ends_with(&format!(" {kw}")))
+    {
         return true;
     }
 
@@ -260,7 +257,6 @@ fn needs_more_input_python(code: &str) -> bool {
         return true;
     }
 
-   
     let mut last_nonempty: Option<&str> = None;
     let mut saw_colon_header = false;
 
@@ -316,7 +312,11 @@ fn python_auto_indent(line: &str, existing: &str) -> String {
     }
 
     let lowered = raw.trim().to_ascii_lowercase();
-    if lowered.starts_with("else:") || lowered.starts_with("elif ") || lowered.starts_with("except") || lowered.starts_with("finally:") {
+    if lowered.starts_with("else:")
+        || lowered.starts_with("elif ")
+        || lowered.starts_with("except")
+        || lowered.starts_with("finally:")
+    {
         return raw.to_string();
     }
 
@@ -490,7 +490,6 @@ impl ReplState {
                 return Ok(false);
             }
             alias => {
-                // allow :py style switching for any registered alias
                 let spec = LanguageSpec::new(alias);
                 if self.registry.resolve(&spec).is_some() {
                     self.switch_language(spec)?;
@@ -534,7 +533,7 @@ impl ReplState {
                     let spec = LanguageSpec::new(detected.to_string());
                     if self.registry.resolve(&spec).is_some() {
                         println!(
-                            "[auto-detect] switching {} → {}",
+                            "[auto-detect] switching {} -> {}",
                             self.current_language.canonical_id(),
                             spec.canonical_id()
                         );

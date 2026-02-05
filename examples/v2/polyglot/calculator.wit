@@ -1,0 +1,52 @@
+// calculator.wit
+// 
+// This WIT interface defines a simple calculator contract.
+// Any language can implement this interface, and any language can call it.
+// Zero handwritten FFI required.
+
+package example:calculator@1.0.0;
+
+/// A simple calculator interface
+interface calculator {
+    /// Add two numbers
+    add: func(a: s32, b: s32) -> s32;
+    
+    /// Subtract b from a
+    subtract: func(a: s32, b: s32) -> s32;
+    
+    /// Multiply two numbers
+    multiply: func(a: s32, b: s32) -> s32;
+    
+    /// Divide a by b, returns error if b is zero
+    divide: func(a: s32, b: s32) -> result<s32, string>;
+    
+    /// Calculate the nth Fibonacci number
+    fibonacci: func(n: u32) -> u64;
+}
+
+/// Advanced math operations
+interface advanced-math {
+    /// Calculate factorial
+    factorial: func(n: u32) -> result<u64, string>;
+    
+    /// Check if a number is prime
+    is-prime: func(n: u64) -> bool;
+    
+    /// Calculate greatest common divisor
+    gcd: func(a: u64, b: u64) -> u64;
+}
+
+/// The calculator world - defines what a calculator component provides
+world calculator-world {
+    /// Export the calculator interface
+    export calculator;
+    
+    /// Optionally export advanced math
+    export advanced-math;
+}
+
+/// World for a component that uses a calculator
+world calculator-user {
+    /// Import a calculator to use
+    import calculator;
+}

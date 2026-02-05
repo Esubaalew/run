@@ -402,7 +402,7 @@ impl LanguageSession for CppSession {
                 language: self.language_id().to_string(),
                 exit_code: None,
                 stdout:
-                    "C++ commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "C++ commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),

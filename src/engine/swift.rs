@@ -364,7 +364,7 @@ impl LanguageSession for SwiftSession {
                 language: "swift".to_string(),
                 exit_code: None,
                 stdout:
-                    "Swift commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "Swift commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),

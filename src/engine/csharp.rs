@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use tempfile::{Builder, TempDir};
 
 use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
@@ -317,7 +317,7 @@ impl LanguageSession for CSharpSession {
                 language: self.language_id().to_string(),
                 exit_code: None,
                 stdout:
-                    "C# commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "C# commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),
@@ -338,7 +338,6 @@ impl LanguageSession for CSharpSession {
     }
 
     fn shutdown(&mut self) -> Result<()> {
-        // TempDir cleanup handled automatically.
         Ok(())
     }
 }
@@ -359,7 +358,6 @@ fn should_treat_as_expression(code: &str) -> bool {
     if trimmed.contains('\n') {
         return false;
     }
-
 
     let trimmed = trimmed.trim_end();
     let without_trailing_semicolon = trimmed.strip_suffix(';').unwrap_or(trimmed).trim_end();
@@ -402,7 +400,6 @@ fn should_treat_as_expression(code: &str) -> bool {
         return false;
     }
 
-
     if lowered.starts_with("new ") {
         return true;
     }
@@ -426,7 +423,10 @@ fn should_treat_as_expression(code: &str) -> bool {
         "ulong ", "float ", "double ", "decimal ", "string ", "object ", "dynamic ", "nint ",
         "nuint ",
     ];
-    if DECL_PREFIXES.iter().any(|prefix| lowered.starts_with(prefix)) {
+    if DECL_PREFIXES
+        .iter()
+        .any(|prefix| lowered.starts_with(prefix))
+    {
         return false;
     }
 
@@ -438,18 +438,18 @@ fn should_treat_as_expression(code: &str) -> bool {
     if expr.parse::<f64>().is_ok() {
         return true;
     }
-    if (expr.starts_with('"') || expr.starts_with("$\"")) && expr.ends_with('"') && expr.len() >= 2 {
+    if (expr.starts_with('"') || expr.starts_with("$\"")) && expr.ends_with('"') && expr.len() >= 2
+    {
         return true;
     }
     if expr.starts_with('\'') && expr.ends_with('\'') && expr.len() >= 2 {
         return true;
     }
 
-
     if expr.contains('(') && expr.ends_with(')') {
         return true;
     }
-   
+
     if expr.contains('[') && expr.ends_with(']') {
         return true;
     }
@@ -495,9 +495,7 @@ fn should_treat_as_expression(code: &str) -> bool {
 fn wrap_expression(code: &str, index: usize) -> String {
     let expr = code.trim().trim_end_matches(';').trim_end();
     let expr = match expr {
-        // `var x = null;` is not legal in C# because the type can't be inferred.
         "null" => "(object)null",
-        // `var x = default;` also has no target type.
         "default" => "(object)null",
         other => other,
     };
@@ -519,11 +517,24 @@ fn prepare_statement(code: &str) -> String {
         return "\n".to_string();
     }
 
-
     let lowered = line.to_ascii_lowercase();
     let starts_with_control = [
-        "if ", "for ", "while ", "switch ", "try", "catch", "finally", "else", "do", "using ",
-        "namespace ", "class ", "struct ", "record ", "enum ", "interface ",
+        "if ",
+        "for ",
+        "while ",
+        "switch ",
+        "try",
+        "catch",
+        "finally",
+        "else",
+        "do",
+        "using ",
+        "namespace ",
+        "class ",
+        "struct ",
+        "record ",
+        "enum ",
+        "interface ",
     ]
     .iter()
     .any(|kw| lowered.starts_with(kw));

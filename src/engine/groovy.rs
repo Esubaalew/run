@@ -287,13 +287,12 @@ impl LanguageSession for GroovySession {
                 language: self.language_id().to_string(),
                 exit_code: None,
                 stdout:
-                    "Groovy commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "Groovy commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),
             });
         }
-
 
         if let Some(snippet) = rewrite_with_tail_capture(code, self.statements.len()) {
             let outcome = self.run_snippet(snippet)?;
@@ -307,7 +306,6 @@ impl LanguageSession for GroovySession {
     }
 
     fn shutdown(&mut self) -> Result<()> {
-        // TempDir cleanup handled automatically.
         Ok(())
     }
 }
@@ -463,14 +461,12 @@ fn rewrite_with_tail_capture(code: &str, index: usize) -> Option<String> {
         return None;
     }
 
-  
     let trimmed = source.trim();
     if trimmed.starts_with('{') && trimmed.ends_with('}') && !trimmed.contains("->") {
         let expr = trimmed.trim_end_matches(';').trim_end();
         let invoke = format!("({expr})()");
         return Some(wrap_expression(&invoke, index));
     }
-
 
     if !source.contains('\n') && source.contains(';') {
         let parts = split_semicolons_outside_quotes(source);

@@ -147,7 +147,11 @@ fn csharp_repl_semantics_suite_core_cases() {
     assert_no_output(&out.stdout, &out.stderr, "object o=10 no output");
 
     let out = session.eval(r#"o is int v ? v * 2 : 0"#).unwrap();
-    assert!(out.success(), "pattern match ternary failed:\n{}", out.stderr);
+    assert!(
+        out.success(),
+        "pattern match ternary failed:\n{}",
+        out.stderr
+    );
     assert_contains(&out.stdout, "20", "pattern match 20");
 
     let out = session.eval("null").unwrap();
@@ -163,8 +167,10 @@ fn csharp_repl_semantics_suite_core_cases() {
     assert_contains(&out.stdout, "System.Int32", "typeof(int)");
 
     let out = session.eval("nameof(StringBuilder)").unwrap();
-    assert!(out.success(), "nameof(StringBuilder) failed:\n{}", out.stderr);
+    assert!(
+        out.success(),
+        "nameof(StringBuilder) failed:\n{}",
+        out.stderr
+    );
     assert_contains(&out.stdout, "StringBuilder", "nameof(StringBuilder)");
 }
-
-

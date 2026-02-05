@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.4.0] - 2026-02-05
+
+### Added
+
+- Run 2.0 experimental preview (WASI 0.2 runtime, component orchestration, dev server, registry server).
+- Run 2.0 documentation and migration guide with explicit opt-in via `run v2`.
+
+### Changed
+
+- Default registry URL now points to `https://registry.esubalew.dev`.
+
 ## [0.3.2] - 2026-01-05
 
 ### Fixed
@@ -83,11 +94,12 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/Esubaalew/run/compare/v0.3.2...HEAD
-[0.3.2]: https://github.com/Esubaalew/run/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/Esubaalew/run/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/Esubaalew/run/compare/v0.2.1...v0.3.0
-[0.2.1]: https://github.com/Esubaalew/run/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/Esubaalew/run/compare/v0.1.1...v0.2.0
-[0.1.1]: https://github.com/Esubaalew/run/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/Esubaalew/run/releases/tag/v0.1.0
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/esubaalew/run/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/esubaalew/run/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/esubaalew/run/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/esubaalew/run/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/esubaalew/run/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/esubaalew/run/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/esubaalew/run/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/esubaalew/run/releases/tag/v0.1.0

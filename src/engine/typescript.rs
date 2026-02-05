@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Instant;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use tempfile::{NamedTempFile, TempDir};
 
 use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
@@ -146,9 +146,7 @@ fn strip_ansi_codes(text: &str) -> String {
 
     while let Some(ch) = chars.next() {
         if ch == '\x1b' {
-            // Skip escape sequence
             if chars.next() == Some('[') {
-                // Skip until we find a letter (end of escape sequence)
                 for c in chars.by_ref() {
                     if c.is_ascii_alphabetic() {
                         break;
@@ -226,7 +224,6 @@ impl TypeScriptSession {
             return;
         }
     } catch (_) {
-        // ignore
     }
     console.log(String(value));
 };
@@ -384,8 +381,7 @@ fn should_treat_as_expression(code: &str) -> bool {
     if KEYWORDS.iter().any(|kw| {
         without_trailing_semicolon.starts_with(kw)
             || without_trailing_semicolon.starts_with(&kw.to_ascii_uppercase())
-    })
-    {
+    }) {
         return false;
     }
     if without_trailing_semicolon.starts_with("return ")

@@ -1,12 +1,11 @@
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, ensure};
-use clap::{Parser, ValueHint, builder::NonEmptyStringValueParser};
+use anyhow::{ensure, Result};
+use clap::{builder::NonEmptyStringValueParser, Parser, ValueHint};
 
 use crate::language::LanguageSpec;
 
-/// Represents the origin of code that should be executed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputSource {
     Inline(String),
@@ -14,7 +13,6 @@ pub enum InputSource {
     Stdin,
 }
 
-/// Encapsulates a single execution request derived from CLI input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionSpec {
     pub language: Option<LanguageSpec>,
@@ -22,7 +20,6 @@ pub struct ExecutionSpec {
     pub detect_language: bool,
 }
 
-/// The top-level command requested by the user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Execute(ExecutionSpec),
@@ -33,7 +30,6 @@ pub enum Command {
     ShowVersion,
 }
 
-/// Parse CLI arguments into a high-level command.
 pub fn parse() -> Result<Command> {
     let cli = Cli::parse();
 
@@ -164,15 +160,14 @@ pub fn parse() -> Result<Command> {
 #[command(
     name = "run",
     about = "Universal multi-language runner and REPL",
+    long_about = "Universal multi-language runner and REPL. Run 2.0 is available via 'run v2' and is experimental.",
     disable_help_subcommand = true,
     disable_version_flag = true
 )]
 struct Cli {
-    /// Print version information and exit.
     #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
     version: bool,
 
-    /// Explicitly choose the language to execute.
     #[arg(
         short,
         long,
@@ -181,7 +176,6 @@ struct Cli {
     )]
     lang: Option<String>,
 
-    /// Execute code from the provided file path.
     #[arg(
         short,
         long,
@@ -190,7 +184,6 @@ struct Cli {
     )]
     file: Option<PathBuf>,
 
-    /// Execute the provided code snippet.
     #[arg(
         short = 'c',
         long = "code",
@@ -199,11 +192,9 @@ struct Cli {
     )]
     code: Option<String>,
 
-    /// Disable heuristic language detection.
     #[arg(long = "no-detect", action = clap::ArgAction::SetTrue)]
     no_detect: bool,
 
-    /// Positional arguments (language, code, or file).
     #[arg(value_name = "ARGS", trailing_var_arg = true)]
     args: Vec<String>,
 }

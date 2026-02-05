@@ -13,7 +13,6 @@ const GIT_DIRTY: Option<&str> = option_env!("RUN_GIT_DIRTY");
 const GIT_DATE: Option<&str> = option_env!("RUN_GIT_DATE");
 const RUSTC_VERSION: Option<&str> = option_env!("RUN_RUSTC_VERSION");
 
-/// Return a human readable string describing the current build.
 pub fn describe() -> String {
     let mut lines = Vec::new();
     lines.push(format!("{PKG_NAME} {PKG_VERSION}"));

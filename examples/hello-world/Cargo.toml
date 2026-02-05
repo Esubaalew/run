@@ -1,0 +1,17 @@
+[package]
+name = "hello"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.33"
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+[package.metadata.component]
+package = "example:hello"

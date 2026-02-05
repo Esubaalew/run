@@ -286,7 +286,7 @@ impl LanguageSession for CrystalSession {
             return Ok(ExecutionOutcome {
                 language: "crystal".to_string(),
                 exit_code: None,
-                stdout: "Crystal commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                stdout: "Crystal commands:\n  :reset - clear session state\n  :help  - show this message\n"
                     .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),

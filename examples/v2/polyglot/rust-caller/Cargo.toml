@@ -1,0 +1,16 @@
+[package]
+name = "rust-caller"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.25"
+
+[package.metadata.component]
+package = "example:caller"
+
+[package.metadata.component.dependencies]
+# Import the calculator interface from the Python component

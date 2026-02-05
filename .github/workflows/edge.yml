@@ -1,0 +1,126 @@
+name: Edge Deployment
+
+# Manual-only until edge deployment is fully implemented
+on:
+  workflow_dispatch:
+
+jobs:
+  cloudflare-deploy:
+    name: Deploy to Cloudflare Workers
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
+      
+      - name: Install Wrangler
+        run: npm install -g wrangler
+      
+      - name: Build Run CLI
+        run: cargo build --features v2 --release
+      
+      - name: Build WASI component
+        run: |
+          cargo run --features v2 -- build --release
+      
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          cargo run --features v2 -- deploy --target edge --provider cloudflare
+
+  aws-lambda-deploy:
+    name: Deploy to AWS Lambda
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
+      
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+      
+      - name: Build Run CLI
+        run: cargo build --features v2 --release
+      
+      - name: Build WASI component
+        run: |
+          cargo run --features v2 -- build --release
+      
+      - name: Deploy to AWS Lambda
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: |
+          cargo run --features v2 -- deploy --target edge --provider aws-lambda
+
+  vercel-deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
+      
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+      
+      - name: Build Run CLI
+        run: cargo build --features v2 --release
+      
+      - name: Build WASI component
+        run: |
+          cargo run --features v2 -- build --release
+      
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          cargo run --features v2 -- deploy --target edge --provider vercel
+
+  edge-smoke-test:
+    name: Edge Deployment Smoke Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
+      
+      - name: Build Run CLI
+        run: cargo build --features v2 --release
+      
+      - name: Build test component
+        run: |
+          cargo run --features v2 -- build --release
+      
+      - name: Test edge manifest generation
+        run: |
+          cargo run --features v2 -- deploy --target edge --provider cloudflare --dry-run
+      
+      - name: Verify manifest
+        run: |
+          test -f target/deploy/edge-manifest.json
+          cat target/deploy/edge-manifest.json

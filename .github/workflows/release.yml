@@ -38,7 +38,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --locked --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --target ${{ matrix.target }} --features v2
 
       - name: Install cargo-deb
         if: matrix.target == 'x86_64-unknown-linux-gnu'
@@ -47,7 +47,7 @@ jobs:
       - name: Build Debian package
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
-          cargo deb --target ${{ matrix.target }}
+          cargo deb --target ${{ matrix.target }} -- --features v2
           mkdir -p artifacts
           DEB_PATH=$(find target/${{ matrix.target }}/debian -maxdepth 1 -name "*.deb" | head -n 1)
           cp "$DEB_PATH" "artifacts/$(basename "$DEB_PATH")"
@@ -99,7 +99,7 @@ jobs:
       - name: Publish crate to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: cargo publish --locked
+        run: cargo publish --locked --features v2
 
   release:
     name: Publish release

@@ -6,3 +6,6 @@ pub mod highlight;
 pub mod language;
 pub mod repl;
 pub mod version;
+
+#[cfg(feature = "v2")]
+pub mod v2;

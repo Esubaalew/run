@@ -1,0 +1,39 @@
+[package]
+name = "dev-experience-demo"
+version = "1.0.0"
+description = "Developer workflow demonstration"
+
+[dev]
+watch = ["src/**/*.rs"]
+reload_delay_ms = 100
+auto_restart = true
+log_level = "info"
+
+[[component]]
+name = "api"
+source = "src/api/lib.rs"
+language = "rust"
+wit = "wit/api.wit"
+
+[component.api.dev]
+port = 8080
+env = { LOG_LEVEL = "debug" }
+
+[[component]]
+name = "web"
+source = "src/web/lib.rs"
+language = "rust"
+wit = "wit/web.wit"
+
+[component.web.dev]
+port = 3000
+env = { API_URL = "http://localhost:8080" }
+
+[[component]]
+name = "worker"
+source = "src/worker/lib.rs"
+language = "rust"
+wit = "wit/worker.wit"
+
+[component.worker.dev]
+env = { QUEUE_URL = "redis://localhost:6379" }

@@ -1,0 +1,27 @@
+[package]
+name = "edge-deploy-example"
+version = "0.1.0"
+description = "Run 2.0 edge deployment example"
+
+[[component]]
+name = "hello-edge"
+source = "hello-edge/src/lib.rs"
+language = "rust"
+wit = "hello-edge/wit/http-handler.wit"
+
+[build]
+reproducible = true
+
+[deploy.cloudflare]
+enabled = true
+account_id = "$CLOUDFLARE_ACCOUNT_ID"
+name = "run-hello-edge"
+
+[deploy.aws-lambda]
+enabled = false
+region = "us-east-1"
+function_name = "run-hello-edge"
+
+[deploy.vercel]
+enabled = false
+project = "run-hello-edge"

@@ -1,0 +1,9 @@
+package run:greeter
+
+interface greeter {
+    greet: func(name: string) -> string
+}
+
+world greeter {
+    export greeter
+}

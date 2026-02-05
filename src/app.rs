@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 
 use crate::cli::{Command, ExecutionSpec};
 use crate::engine::{
-    ExecutionPayload, LanguageRegistry, default_language, detect_language_for_source,
-    ensure_known_language,
+    default_language, detect_language_for_source, ensure_known_language, ExecutionPayload,
+    LanguageRegistry,
 };
 use crate::language::LanguageSpec;
 use crate::repl;

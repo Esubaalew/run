@@ -285,9 +285,6 @@ fn wrap_inline_java(body: &str) -> String {
         return body.to_string();
     }
 
-    // Preserve leading package/import lines at top-level so they aren't placed
-    // inside the generated Main class. Collect header lines then wrap the
-    // remaining code inside the Main class's main method.
     let mut header_lines = Vec::new();
     let mut rest_lines = Vec::new();
     let mut in_header = true;

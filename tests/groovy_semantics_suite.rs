@@ -70,7 +70,9 @@ fn groovy_repl_semantics_suite_selected_cases() {
     assert!(out.success(), "truthiness failed:\n{}", out.stderr);
     assert_contains(&out.stdout, "no", "if([]) -> no");
 
-    let out = session.eval(r#"def name = null; name ?: "anonymous""#).unwrap();
+    let out = session
+        .eval(r#"def name = null; name ?: "anonymous""#)
+        .unwrap();
     assert!(out.success(), "elvis failed:\n{}", out.stderr);
     assert_contains(&out.stdout, "anonymous", "elvis");
 
@@ -78,5 +80,3 @@ fn groovy_repl_semantics_suite_selected_cases() {
     assert!(out.success(), "safe nav failed:\n{}", out.stderr);
     assert_contains(&out.stdout.to_lowercase(), "null", "safe nav null");
 }
-
-

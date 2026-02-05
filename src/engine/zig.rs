@@ -318,7 +318,6 @@ impl ZigSession {
 
         let success = output.status.success();
 
-        // Merge stderr to stdout for Zig (std.debug.print goes to stderr)
         if success && !stderr_full.is_empty() && !stderr_full.contains("error:") {
             if stdout_full.is_empty() {
                 stdout_full = stderr_full.clone();
@@ -450,7 +449,7 @@ impl LanguageSession for ZigSession {
                 language: self.language_id().to_string(),
                 exit_code: None,
                 stdout:
-                    "Zig commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "Zig commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),

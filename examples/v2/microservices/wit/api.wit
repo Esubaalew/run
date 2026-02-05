@@ -1,0 +1,52 @@
+package example:microservices;
+
+interface api {
+    record request {
+        method: string,
+        path: string,
+        body: list<u8>,
+    }
+
+    record response {
+        status: u16,
+        body: list<u8>,
+    }
+
+    handle: func(req: request) -> response;
+}
+
+interface auth {
+    record token {
+        user-id: string,
+        expires: u64,
+    }
+
+    validate: func(token: string) -> option<token>;
+    generate: func(user-id: string) -> string;
+}
+
+interface users {
+    record user {
+        id: string,
+        name: string,
+        email: string,
+    }
+
+    get: func(id: string) -> option<user>;
+    list: func() -> list<user>;
+}
+
+world api-gateway {
+    import auth;
+    import users;
+    export api;
+}
+
+world auth-service {
+    export auth;
+}
+
+world user-service {
+    import auth;
+    export users;
+}

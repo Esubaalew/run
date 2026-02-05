@@ -349,7 +349,6 @@ impl DartSession {
         let start = Instant::now();
         let (outcome, success) = self.run_current(start)?;
         if !success {
-            // remove the imports we just inserted
             for line in code.lines() {
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
@@ -444,7 +443,7 @@ impl LanguageSession for DartSession {
                 language: "dart".to_string(),
                 exit_code: None,
                 stdout:
-                    "Dart commands:\n  :reset — clear session state\n  :help  — show this message\n"
+                    "Dart commands:\n  :reset - clear session state\n  :help  - show this message\n"
                         .to_string(),
                 stderr: String::new(),
                 duration: Duration::default(),
