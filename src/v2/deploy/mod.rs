@@ -194,6 +194,7 @@ async fn publish_registry(
     let auth_token = options
         .auth_token
         .clone()
+        .or_else(|| std::env::var("RUN_AUTH_TOKEN").ok())
         .or_else(|| config.registry.auth_token.clone())
         .or_else(|| profile.and_then(|p| p.options.get("auth_token").cloned()));
 

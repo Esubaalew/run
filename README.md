@@ -499,7 +499,7 @@ run v2 dev
 
 ## Publishing to the Registry
 
-Run 2.0 publishes components via `run v2 deploy --target registry`.
+Run 2.0 publishes components via `run v2 publish` (alias for `run v2 deploy --target registry`).
 
 Default registry:
 - `https://registry.esubalew.dev`
@@ -508,13 +508,13 @@ Publish a component:
 
 ```bash
 run v2 build
-run v2 deploy --target registry --token YOUR_TOKEN
+run v2 publish --token YOUR_TOKEN
 ```
 
 Override the registry URL:
 
 ```bash
-run v2 deploy --target registry \
+run v2 publish \
   --registry-url https://registry.esubalew.dev \
   --token YOUR_TOKEN
 ```
