@@ -98,6 +98,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(root_handler))
+        .route("/browse", get(browse_packages))
+        .route("/browse/:name", get(browse_package_detail))
         .route("/api/v1/packages", post(publish_package))
         .route("/api/v1/packages/:name/versions", get(list_versions))
         .route("/api/v1/packages/:name/:version", get(get_meta))
@@ -139,16 +141,21 @@ async fn root_handler() -> impl IntoResponse {
         code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
         pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
         a { color: #0066cc; }
+        .btn { display: inline-block; background: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+        .btn:hover { background: #0055aa; }
     </style>
 </head>
 <body>
     <h1>Run Registry</h1>
     <p>WASI component registry for <a href="https://github.com/Esubaalew/run">Run 2.0</a>.</p>
     
+    <p><a href="/browse" class="btn">Browse Packages</a></p>
+    
     <h2>API Endpoints</h2>
     <ul>
         <li><code>GET /health</code> - Health check</li>
-        <li><code>GET /packages</code> - List all packages</li>
+        <li><code>GET /browse</code> - Browse packages (HTML)</li>
+        <li><code>GET /packages</code> - List all packages (JSON)</li>
         <li><code>GET /api/v1/packages/:name/versions</code> - List versions</li>
         <li><code>GET /api/v1/packages/:name/:version</code> - Get package metadata</li>
         <li><code>GET /api/v1/search?q=query</code> - Search packages</li>
@@ -163,6 +170,305 @@ async fn root_handler() -> impl IntoResponse {
 </body>
 </html>"#
     )
+}
+
+async fn browse_packages(
+    State(state): State<RegistryState>,
+) -> impl IntoResponse {
+    let packages = fetch_all_packages_with_info(&state.db).await.unwrap_or_default();
+    let (package_count, version_count) = stats_counts(&state.db).await.unwrap_or((0, 0));
+    let downloads = total_downloads(&state.db).await.unwrap_or(0);
+    
+    let mut package_rows = String::new();
+    for pkg in &packages {
+        package_rows.push_str(&format!(
+            r#"<tr>
+                <td><a href="/browse/{}">{}</a></td>
+                <td>{}</td>
+                <td>{}</td>
+                <td>{}</td>
+            </tr>"#,
+            urlencoding::encode(&pkg.name),
+            html_escape(&pkg.name),
+            html_escape(&pkg.latest_version),
+            html_escape(&pkg.description),
+            pkg.downloads
+        ));
+    }
+    
+    if package_rows.is_empty() {
+        package_rows = r#"<tr><td colspan="4" style="text-align: center; color: #666; padding: 40px;">No packages published yet. Be the first!</td></tr>"#.to_string();
+    }
+
+    let html = format!(r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Browse Packages - Run Registry</title>
+    <style>
+        * {{ box-sizing: border-box; }}
+        body {{ font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1000px; margin: 0 auto; }}
+        h1 {{ color: #333; margin-bottom: 5px; }}
+        .subtitle {{ color: #666; margin-bottom: 30px; }}
+        .stats {{ display: flex; gap: 20px; margin-bottom: 30px; }}
+        .stat {{ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); flex: 1; text-align: center; }}
+        .stat-value {{ font-size: 2em; font-weight: bold; color: #0066cc; }}
+        .stat-label {{ color: #666; font-size: 0.9em; }}
+        .search-box {{ margin-bottom: 20px; }}
+        .search-box input {{ width: 100%; padding: 12px 16px; font-size: 16px; border: 1px solid #ddd; border-radius: 8px; }}
+        table {{ width: 100%; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-collapse: collapse; }}
+        th {{ text-align: left; padding: 15px; background: #f8f8f8; border-bottom: 2px solid #eee; color: #333; }}
+        td {{ padding: 15px; border-bottom: 1px solid #eee; }}
+        tr:hover {{ background: #fafafa; }}
+        a {{ color: #0066cc; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        .back {{ margin-bottom: 20px; }}
+        .nav {{ margin-bottom: 20px; }}
+        .nav a {{ margin-right: 15px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav"><a href="/">Home</a></div>
+        <h1>Browse Packages</h1>
+        <p class="subtitle">WASI components for Run 2.0</p>
+        
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Packages</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Versions</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">{}</div>
+                <div class="stat-label">Downloads</div>
+            </div>
+        </div>
+        
+        <div class="search-box">
+            <input type="text" id="search" placeholder="Search packages..." onkeyup="filterTable()">
+        </div>
+        
+        <table id="packages">
+            <thead>
+                <tr>
+                    <th>Package</th>
+                    <th>Latest</th>
+                    <th>Description</th>
+                    <th>Downloads</th>
+                </tr>
+            </thead>
+            <tbody>
+                {}
+            </tbody>
+        </table>
+    </div>
+    <script>
+        function filterTable() {{
+            const query = document.getElementById('search').value.toLowerCase();
+            const rows = document.querySelectorAll('#packages tbody tr');
+            rows.forEach(row => {{
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            }});
+        }}
+    </script>
+</body>
+</html>"#, package_count, version_count, downloads, package_rows);
+
+    ([(header::CONTENT_TYPE, "text/html")], html)
+}
+
+async fn browse_package_detail(
+    Path(name): Path<String>,
+    State(state): State<RegistryState>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let decoded_name = urlencoding::decode(&name).unwrap_or(std::borrow::Cow::Borrowed(&name));
+    let versions = fetch_versions_with_info(&state.db, &decoded_name).await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    
+    if versions.is_empty() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    
+    let latest = &versions[0];
+    
+    let mut version_rows = String::new();
+    for v in &versions {
+        let date = chrono::DateTime::from_timestamp(v.published_at, 0)
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+        version_rows.push_str(&format!(
+            r#"<tr>
+                <td>{}</td>
+                <td>{}</td>
+                <td>{}</td>
+                <td><code>run v2 install {}@{}</code></td>
+            </tr>"#,
+            html_escape(&v.version),
+            date,
+            format_size(v.size),
+            html_escape(&decoded_name),
+            html_escape(&v.version)
+        ));
+    }
+
+    let html = format!(r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>{} - Run Registry</title>
+    <style>
+        * {{ box-sizing: border-box; }}
+        body {{ font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1000px; margin: 0 auto; }}
+        h1 {{ color: #333; margin-bottom: 5px; }}
+        .meta {{ color: #666; margin-bottom: 20px; }}
+        .description {{ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }}
+        .install {{ background: #1a1a2e; color: #eee; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; font-family: monospace; }}
+        table {{ width: 100%; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-collapse: collapse; }}
+        th {{ text-align: left; padding: 15px; background: #f8f8f8; border-bottom: 2px solid #eee; color: #333; }}
+        td {{ padding: 15px; border-bottom: 1px solid #eee; }}
+        code {{ background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }}
+        a {{ color: #0066cc; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        .nav {{ margin-bottom: 20px; }}
+        .nav a {{ margin-right: 15px; }}
+        .badge {{ display: inline-block; background: #e8f4e8; color: #2e7d32; padding: 3px 10px; border-radius: 12px; font-size: 0.85em; margin-right: 10px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav"><a href="/">Home</a> <a href="/browse">Browse</a></div>
+        <h1>{}</h1>
+        <div class="meta">
+            <span class="badge">v{}</span>
+            {}
+            {}
+        </div>
+        
+        <div class="description">{}</div>
+        
+        <div class="install">
+            <strong>Install:</strong> run v2 install {}@{}
+        </div>
+        
+        <h2>Versions</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Version</th>
+                    <th>Published</th>
+                    <th>Size</th>
+                    <th>Install</th>
+                </tr>
+            </thead>
+            <tbody>
+                {}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>"#,
+        html_escape(&decoded_name),
+        html_escape(&decoded_name),
+        html_escape(&latest.version),
+        latest.license.as_ref().map(|l| format!(r#"<span class="badge">{}</span>"#, html_escape(l))).unwrap_or_default(),
+        latest.repository.as_ref().map(|r| format!(r#"<a href="{}">{}</a>"#, html_escape(r), html_escape(r))).unwrap_or_default(),
+        html_escape(&latest.description),
+        html_escape(&decoded_name),
+        html_escape(&latest.version),
+        version_rows
+    );
+
+    Ok(([(header::CONTENT_TYPE, "text/html")], html))
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn format_size(bytes: i64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
+#[derive(Debug)]
+struct PackageInfo {
+    name: String,
+    latest_version: String,
+    description: String,
+    downloads: i64,
+}
+
+#[derive(Debug)]
+struct VersionInfo {
+    version: String,
+    description: String,
+    license: Option<String>,
+    repository: Option<String>,
+    size: i64,
+    published_at: i64,
+}
+
+async fn fetch_all_packages_with_info(db: &SqlitePool) -> Result<Vec<PackageInfo>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"SELECT p.name, 
+                  (SELECT version FROM versions WHERE package_id = p.id ORDER BY published_at DESC LIMIT 1) as latest_version,
+                  p.description,
+                  COALESCE((SELECT SUM(downloads) FROM versions WHERE package_id = p.id), 0) as total_downloads
+           FROM packages p
+           ORDER BY total_downloads DESC, p.name ASC"#
+    )
+    .fetch_all(db)
+    .await?;
+    
+    Ok(rows.iter().filter_map(|row| {
+        Some(PackageInfo {
+            name: row.try_get("name").ok()?,
+            latest_version: row.try_get("latest_version").ok()?,
+            description: row.try_get("description").unwrap_or_default(),
+            downloads: row.try_get("total_downloads").unwrap_or(0),
+        })
+    }).collect())
+}
+
+async fn fetch_versions_with_info(db: &SqlitePool, name: &str) -> Result<Vec<VersionInfo>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"SELECT v.version, v.size, v.published_at, p.description, p.license, p.repository
+           FROM versions v
+           JOIN packages p ON v.package_id = p.id
+           WHERE p.name = ?
+           ORDER BY v.published_at DESC"#
+    )
+    .bind(name)
+    .fetch_all(db)
+    .await?;
+    
+    if rows.is_empty() {
+        return Err(sqlx::Error::RowNotFound);
+    }
+    
+    Ok(rows.iter().filter_map(|row| {
+        Some(VersionInfo {
+            version: row.try_get("version").ok()?,
+            description: row.try_get("description").unwrap_or_default(),
+            license: row.try_get("license").ok(),
+            repository: row.try_get("repository").ok(),
+            size: row.try_get("size").unwrap_or(0),
+            published_at: row.try_get("published_at").unwrap_or(0),
+        })
+    }).collect())
 }
 
 async fn get_stats(
