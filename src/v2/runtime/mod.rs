@@ -8,8 +8,8 @@ mod memory;
 mod wasi_ctx;
 
 pub use async_exec::{
-    call_async, call_parallel, AsyncBatchExecutor, AsyncCallResult, AsyncConfig, AsyncEvent,
-    AsyncMetrics,
+    AsyncBatchExecutor, AsyncCallResult, AsyncConfig, AsyncEvent, AsyncMetrics, call_async,
+    call_parallel,
 };
 pub use capabilities::{Capability, CapabilitySet, PolicyMode, SecurityPolicy};
 pub use engine::{CliContext, RuntimeConfig, RuntimeEngine};

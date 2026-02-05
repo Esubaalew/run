@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 #[cfg(feature = "v2")]
-use run::v2::cli::{execute as execute_v2, V2Command};
+use run::v2::cli::{V2Command, execute as execute_v2};
 
 fn main() -> Result<()> {
     #[cfg(feature = "v2")]
@@ -261,6 +261,38 @@ fn main() -> Result<()> {
                         registry_url,
                         token,
                         provider,
+                    })
+                }
+                "publish" => {
+                    let mut component = None;
+                    let mut build = false;
+                    let mut registry_url = None;
+                    let mut token = None;
+                    let mut i = 1;
+                    while i < v2_args.len() {
+                        match v2_args[i].as_str() {
+                            "--component" if i + 1 < v2_args.len() => {
+                                component = Some(v2_args[i + 1].clone());
+                                i += 1;
+                            }
+                            "--registry-url" if i + 1 < v2_args.len() => {
+                                registry_url = Some(v2_args[i + 1].clone());
+                                i += 1;
+                            }
+                            "--token" if i + 1 < v2_args.len() => {
+                                token = Some(v2_args[i + 1].clone());
+                                i += 1;
+                            }
+                            "--build" => build = true,
+                            _ => {}
+                        }
+                        i += 1;
+                    }
+                    Some(V2Command::Publish {
+                        component,
+                        build,
+                        registry_url,
+                        token,
                     })
                 }
                 "compose" => {

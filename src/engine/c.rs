@@ -857,11 +857,7 @@ fn parse_include(code: &str) -> Option<String> {
         return None;
     }
     let line = trimmed.lines().next()?.trim().to_string();
-    if line.is_empty() {
-        None
-    } else {
-        Some(line)
-    }
+    if line.is_empty() { None } else { Some(line) }
 }
 
 fn is_item_snippet(code: &str) -> bool {

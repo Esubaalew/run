@@ -375,7 +375,7 @@ impl LanguageSession for LuaSession {
 
 #[cfg(test)]
 mod tests {
-    use super::{looks_like_expression_snippet, wrap_expression_snippet, LuaSession};
+    use super::{LuaSession, looks_like_expression_snippet, wrap_expression_snippet};
 
     #[test]
     fn diff_outputs_appends_only_suffix() {

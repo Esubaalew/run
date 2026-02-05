@@ -10,12 +10,12 @@ pub use output::{OutputLine, OutputManager, OutputStyle};
 pub use server::{DevServer, DevServerConfig, DevServerNotifier};
 pub use watcher::{FileWatcher, WatchEvent};
 
+use crate::v2::Result;
 use crate::v2::bridge::{Bridge, BridgeConfig, ConnectionInfo, DockerConfig};
 use crate::v2::build::build_all;
 use crate::v2::config::RunConfig;
 use crate::v2::orchestrator::{Orchestrator, OrchestratorConfig, OrchestratorEvent};
 use crate::v2::runtime::{Capability, CapabilitySet, RuntimeConfig, RuntimeEngine};
-use crate::v2::Result;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -204,7 +204,8 @@ impl DevSession {
 
         if let Some(ref mut server) = self.server {
             if let Err(e) = server.start().await {
-                self.output.log_warning("devserver", &format!("failed to start: {}", e));
+                self.output
+                    .log_warning("devserver", &format!("failed to start: {}", e));
             } else {
                 self.output
                     .log_system(&format!("Dev server running at {}", server.url()));

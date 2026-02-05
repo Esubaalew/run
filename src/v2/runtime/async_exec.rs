@@ -1,7 +1,7 @@
 use super::*;
 use crate::v2::{Error, Result};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 #[derive(Debug, Clone)]

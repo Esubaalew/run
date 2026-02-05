@@ -5,11 +5,11 @@
 use crate::v2::bridge::compose::{analyze_compose, migrate_compose_to_run};
 use crate::v2::build::build_all;
 use crate::v2::config::RunConfig;
-use crate::v2::deploy::{run_deploy, DeployOptions};
-use crate::v2::dev::{run_dev, DevOptions};
+use crate::v2::deploy::{DeployOptions, run_deploy};
+use crate::v2::dev::{DevOptions, run_dev};
 use crate::v2::plugins::{PluginHook, PluginManager};
 use crate::v2::registry::{InstallOptions, Registry, RegistryConfig};
-use crate::v2::test::{run_tests, TestOptions};
+use crate::v2::test::{TestOptions, run_tests};
 use crate::v2::toolchain::ToolchainManager;
 use crate::v2::{Error, Result};
 use std::path::PathBuf;
@@ -84,6 +84,14 @@ pub enum V2Command {
         registry_url: Option<String>,
         token: Option<String>,
         provider: Option<String>,
+    },
+
+    /// Publish to registry (alias for `deploy --target registry`)
+    Publish {
+        component: Option<String>,
+        build: bool,
+        registry_url: Option<String>,
+        token: Option<String>,
     },
 
     Compose {
@@ -553,7 +561,7 @@ pub async fn execute(cmd: V2Command, project_dir: PathBuf) -> Result<i32> {
         }
 
         V2Command::Verify { offline } => {
-            use crate::v2::registry::{compute_sha256, Lockfile};
+            use crate::v2::registry::{Lockfile, compute_sha256};
 
             let lockfile_path = project_dir.join("run.lock");
             if !lockfile_path.exists() {
@@ -678,6 +686,33 @@ pub async fn execute(cmd: V2Command, project_dir: PathBuf) -> Result<i32> {
             Ok(0)
         }
 
+        V2Command::Publish {
+            component,
+            build,
+            registry_url,
+            token,
+        } => {
+            let config_path = project_dir.join("run.toml");
+            let config = RunConfig::load(&config_path)?;
+            if let Ok(plugins) = PluginManager::load_all(&config, &project_dir).await {
+                let _ = plugins.run_hook(PluginHook::Deploy);
+            }
+
+            let options = DeployOptions {
+                project_dir,
+                target: Some("registry".to_string()),
+                profile: None,
+                output_dir: None,
+                component,
+                build,
+                registry_url,
+                auth_token: token,
+                provider: None,
+            };
+            run_deploy(options).await?;
+            Ok(0)
+        }
+
         V2Command::Compose {
             action,
             input,
@@ -765,6 +800,7 @@ pub fn print_help() {
     println!("    build        Build all components");
     println!("    test         Run component tests");
     println!("    deploy       Package and deploy components");
+    println!("    publish      Publish component to registry");
     println!("    init         Initialize a new project");
     println!("    info         Show component info");
     println!("    update       Update dependencies");
@@ -788,6 +824,7 @@ pub fn print_help() {
     println!("    run v2 build --reproducible   # Build with reproducible env");
     println!("    run v2 test --build           # Build then run tests");
     println!("    run v2 deploy --target local  # Package deployment bundle");
+    println!("    run v2 publish --build        # Build and publish to registry");
     println!("    run v2 compose analyze docker-compose.yml");
     println!("    run v2 compose migrate docker-compose.yml run.toml");
     println!("    run v2 toolchain sync         # Update run.lock.toml");

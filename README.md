@@ -497,6 +497,37 @@ run v2 dev
 | `run v2 deploy` | Deploy to edge/registry |
 | `run v2 install` | Install dependencies |
 
+## Publishing to the Registry
+
+Run 2.0 publishes components via `run v2 deploy --target registry`.
+
+Default registry:
+- `https://registry.esubalew.dev`
+
+Publish a component:
+
+```bash
+run v2 build
+run v2 deploy --target registry --token YOUR_TOKEN
+```
+
+Override the registry URL:
+
+```bash
+run v2 deploy --target registry \
+  --registry-url https://registry.esubalew.dev \
+  --token YOUR_TOKEN
+```
+
+You can also set the token in `run.toml`:
+
+```toml
+[registry]
+auth_token = "${RUN_AUTH_TOKEN}"
+```
+
+Keep tokens in environment variables and do not commit them to source control.
+
 ## Configuration
 
 `run.toml` defines your project:

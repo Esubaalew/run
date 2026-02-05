@@ -29,10 +29,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::cli::InputSource;
-use crate::language::{canonical_language_id, LanguageSpec};
+use crate::language::{LanguageSpec, canonical_language_id};
 
 pub use bash::BashEngine;
 pub use c::CEngine;

@@ -362,7 +362,7 @@ fn normalize_php_snippet(code: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_php_snippet, PhpSession};
+    use super::{PhpSession, normalize_php_snippet};
 
     #[test]
     fn strips_prompt_prefixes() {

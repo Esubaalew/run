@@ -2,7 +2,7 @@
 //!
 //! HTTP client for remote registries.
 
-use super::{compute_sha256, ComponentPackage, Dependency};
+use super::{ComponentPackage, Dependency, compute_sha256};
 use crate::v2::{Error, Result};
 use semver::{Version, VersionReq};
 use serde::Deserialize;

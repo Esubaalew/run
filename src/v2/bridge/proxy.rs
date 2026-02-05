@@ -6,8 +6,8 @@ use crate::v2::{Error, Result};
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use std::thread;
 use std::time::Duration;

@@ -4,7 +4,7 @@
 
 mod edge;
 
-pub use edge::{deploy_edge, generate_edge_manifest, EdgeDeployment, EdgeProvider};
+pub use edge::{EdgeDeployment, EdgeProvider, deploy_edge, generate_edge_manifest};
 
 use crate::v2::build::build_all;
 use crate::v2::config::{DeployConfig, RunConfig};

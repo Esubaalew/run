@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use run::v2::orchestrator::{create_orchestrator, OrchestratorConfig};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use run::v2::orchestrator::{OrchestratorConfig, create_orchestrator};
 use run::v2::runtime::{CapabilitySet, RuntimeConfig, RuntimeEngine};
 use std::sync::{Arc, Mutex};
 

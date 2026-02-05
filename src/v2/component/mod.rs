@@ -2,12 +2,12 @@
 //!
 //! Provides a simple, ergonomic API for working with WASI components.
 
+use crate::v2::Result;
 use crate::v2::runtime::{
     Capability, CapabilitySet, ComponentValue, ExecutionResult, InstanceHandle, LoadedComponent,
     RuntimeEngine,
 };
 use crate::v2::wit::WitPackage;
-use crate::v2::Result;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 

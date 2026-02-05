@@ -9,7 +9,7 @@ mod resolver;
 pub use cache::{CacheConfig, ComponentCache};
 pub use client::{RegistryClient, RegistryConfig};
 pub use local::{LocalRegistry, LocalRegistryConfig, PackageMetadata};
-pub use lockfile::{compute_sha256, LockedComponent, Lockfile};
+pub use lockfile::{LockedComponent, Lockfile, compute_sha256};
 pub use resolver::{DependencyResolver, ResolvedDependency};
 
 use crate::v2::{Error, Result};

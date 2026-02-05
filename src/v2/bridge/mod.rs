@@ -9,7 +9,7 @@ pub mod compose;
 mod docker;
 mod proxy;
 
-pub use compose::{migrate_compose_to_run, DockerCompose};
+pub use compose::{DockerCompose, migrate_compose_to_run};
 pub use docker::{DockerConfig, DockerService};
 pub use proxy::{BridgeProxy, ProxyConfig};
 

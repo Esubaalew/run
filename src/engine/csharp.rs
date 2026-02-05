@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use tempfile::{Builder, TempDir};
 
 use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};

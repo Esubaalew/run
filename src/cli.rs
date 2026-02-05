@@ -1,8 +1,8 @@
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
-use anyhow::{ensure, Result};
-use clap::{builder::NonEmptyStringValueParser, Parser, ValueHint};
+use anyhow::{Result, ensure};
+use clap::{Parser, ValueHint, builder::NonEmptyStringValueParser};
 
 use crate::language::LanguageSpec;
 

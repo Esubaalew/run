@@ -4,7 +4,10 @@ use crate::v2::Result;
 use serde::Serialize;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -84,12 +87,8 @@ impl DevServer {
             while running.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((mut stream, _addr)) => {
-                        let _ = handle_request(
-                            &mut stream,
-                            &config,
-                            &status_provider,
-                            &last_reload,
-                        );
+                        let _ =
+                            handle_request(&mut stream, &config, &status_provider, &last_reload);
                     }
                     Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(50));
@@ -251,7 +250,12 @@ fn handle_request(
     let path = parts.next().unwrap_or("/");
 
     if method != "GET" {
-        return respond(stream, "405 Method Not Allowed", "text/plain", "Method not allowed");
+        return respond(
+            stream,
+            "405 Method Not Allowed",
+            "text/plain",
+            "Method not allowed",
+        );
     }
 
     match path {
@@ -307,10 +311,7 @@ mod tests {
 
     #[test]
     fn test_dev_server_url() {
-        let server = DevServer::new(
-            DevServerConfig::default(),
-            Arc::new(|| Vec::new()),
-        );
+        let server = DevServer::new(DevServerConfig::default(), Arc::new(|| Vec::new()));
         assert_eq!(server.url(), "http://127.0.0.1:3000");
     }
 }

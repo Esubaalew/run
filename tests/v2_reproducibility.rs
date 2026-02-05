@@ -1,5 +1,5 @@
 use run::v2::registry::{
-    compute_sha256, LocalRegistry, LocalRegistryConfig, PackageMetadata, Registry, RegistryConfig,
+    LocalRegistry, LocalRegistryConfig, PackageMetadata, Registry, RegistryConfig, compute_sha256,
 };
 use run::v2::registry::{LockedComponent, Lockfile};
 use semver::Version;

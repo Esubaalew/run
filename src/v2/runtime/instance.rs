@@ -2,8 +2,8 @@ use super::engine::CliContext;
 use super::*;
 use crate::v2::{Error, Result};
 use std::sync::{
-    atomic::{AtomicI32, AtomicU64, AtomicU8, Ordering},
     Arc, Weak,
+    atomic::{AtomicI32, AtomicU8, AtomicU64, Ordering},
 };
 
 #[cfg(feature = "v2")]
@@ -11,9 +11,9 @@ use super::wasi_ctx::WasiHostState;
 #[cfg(feature = "v2")]
 use anyhow::anyhow;
 #[cfg(feature = "v2")]
-use wasmtime::component::{Instance, Linker as WasmtimeLinker, Val};
-#[cfg(feature = "v2")]
 use wasmtime::Store;
+#[cfg(feature = "v2")]
+use wasmtime::component::{Instance, Linker as WasmtimeLinker, Val};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstanceState {
