@@ -1,6 +1,6 @@
 [package]
 name = "run-kit"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 description = "Universal multi-language runner and smart REPL"
 license = "Apache-2.0"
