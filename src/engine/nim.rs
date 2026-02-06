@@ -430,7 +430,11 @@ fn collect_declared_identifiers(code: &str) -> Vec<String> {
                 continue;
             }
 
-            if name.chars().next().map_or(true, |ch| !is_nim_identifier_start(ch)) {
+            if name
+                .chars()
+                .next()
+                .map_or(true, |ch| !is_nim_identifier_start(ch))
+            {
                 continue;
             }
 

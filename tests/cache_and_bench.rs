@@ -51,7 +51,6 @@ fn cache_lookup_returns_none_for_unknown() {
 
 #[test]
 fn cache_store_and_retrieve() {
-    
     let mut tmp = NamedTempFile::new().expect("create temp file");
     writeln!(tmp, "#!/bin/sh\necho cached").expect("write temp");
     let path = tmp.path().to_path_buf();
@@ -63,10 +62,7 @@ fn cache_store_and_retrieve() {
 
     let lookup = run::engine::cache_lookup(hash);
     assert!(lookup.is_some(), "cache_lookup should find stored entry");
-    assert!(
-        lookup.unwrap().exists(),
-        "cached path should exist on disk"
-    );
+    assert!(lookup.unwrap().exists(), "cached path should exist on disk");
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +78,9 @@ fn rust_inline_uses_cache_on_repeated_run() {
 
     let engine = run::engine::RustEngine::new();
     let code = r#"fn main() { println!("cache_test"); }"#;
-    let payload = run::engine::ExecutionPayload::Inline { code: code.to_string() };
+    let payload = run::engine::ExecutionPayload::Inline {
+        code: code.to_string(),
+    };
 
     let out1 = engine.execute(&payload).expect("first run should succeed");
     assert!(out1.success());
@@ -93,7 +91,11 @@ fn rust_inline_uses_cache_on_repeated_run() {
     assert!(out2.success());
     assert!(out2.stdout.contains("cache_test"));
 
-    eprintln!("first: {}ms, second: {}ms", t1.as_millis(), out2.duration.as_millis());
+    eprintln!(
+        "first: {}ms, second: {}ms",
+        t1.as_millis(),
+        out2.duration.as_millis()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +209,9 @@ fn format_duration_millis() {
         return;
     }
 
-    let payload = run::engine::ExecutionPayload::Inline { code: "1+1".to_string() };
+    let payload = run::engine::ExecutionPayload::Inline {
+        code: "1+1".to_string(),
+    };
     let outcome = engine.execute(&payload).expect("should run");
     assert!(outcome.success());
 

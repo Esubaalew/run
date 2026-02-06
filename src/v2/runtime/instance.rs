@@ -8,13 +8,13 @@ use std::sync::{
 
 #[cfg(feature = "v2")]
 use super::wasi_ctx::WasiHostState;
+use crate::v2::wit::WitWorldItem;
 #[cfg(feature = "v2")]
 use anyhow::anyhow;
 #[cfg(feature = "v2")]
 use wasmtime::Store;
 #[cfg(feature = "v2")]
 use wasmtime::component::{Instance, Linker as WasmtimeLinker, Val};
-use crate::v2::wit::WitWorldItem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstanceState {
@@ -446,7 +446,11 @@ impl ComponentInstance {
                                 candidates.insert(format!("{}/{}", pkg, interface));
                                 if let Some(version) = &package.version {
                                     candidates.insert(format!("{}/{}@{}", pkg, interface, version));
-                                    candidates.insert(format!("{}/{}", package.to_string(), interface));
+                                    candidates.insert(format!(
+                                        "{}/{}",
+                                        package.to_string(),
+                                        interface
+                                    ));
                                 }
                             }
                         }
@@ -555,9 +559,7 @@ impl ComponentInstance {
                         resolved = Some(func);
                         break;
                     }
-                    Err(Error::ExecutionFailed { reason, .. })
-                        if reason.contains("not found") =>
-                    {
+                    Err(Error::ExecutionFailed { reason, .. }) if reason.contains("not found") => {
                         continue;
                     }
                     Err(e) => return Err(e),
@@ -570,10 +572,9 @@ impl ComponentInstance {
             })?;
 
             let results_len = func.results(&mut *store).len();
-            let mut results: Vec<Val> =
-                std::iter::repeat_with(|| Val::Bool(false))
-                    .take(results_len)
-                    .collect();
+            let mut results: Vec<Val> = std::iter::repeat_with(|| Val::Bool(false))
+                .take(results_len)
+                .collect();
 
             func.call(&mut *store, &[], &mut results).map_err(|e| {
                 self.set_state(InstanceState::Error);
@@ -936,10 +937,7 @@ fn exit_code_from_return_value(return_value: &Option<ComponentValue>) -> i32 {
     };
 
     match value {
-        ComponentValue::Result { ok: _, err } => err
-            .as_ref()
-            .and_then(|v| v.as_i32())
-            .unwrap_or(0),
+        ComponentValue::Result { ok: _, err } => err.as_ref().and_then(|v| v.as_i32()).unwrap_or(0),
         other => other.as_i32().unwrap_or(0),
     }
 }

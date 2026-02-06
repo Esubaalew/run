@@ -372,10 +372,7 @@ mod tests {
         std::fs::create_dir_all(&secret_dir).unwrap();
         std::fs::write(secret_dir.join("secret.rs"), "fn main() {}").unwrap();
 
-        let original_mode = std::fs::metadata(&secret_dir)
-            .unwrap()
-            .permissions()
-            .mode();
+        let original_mode = std::fs::metadata(&secret_dir).unwrap().permissions().mode();
         let _guard = PermGuard {
             path: secret_dir.clone(),
             mode: original_mode,

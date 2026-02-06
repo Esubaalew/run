@@ -85,7 +85,13 @@ pub fn run_tests(options: TestOptions) -> Result<TestReport> {
                 }
             }
             total += 1;
-            match run_single_test(&config, &options.project_dir, &mut engine, &mut handles, test_case) {
+            match run_single_test(
+                &config,
+                &options.project_dir,
+                &mut engine,
+                &mut handles,
+                test_case,
+            ) {
                 Ok(()) => {
                     passed += 1;
                     if !options.json {

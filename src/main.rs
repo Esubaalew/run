@@ -1,9 +1,9 @@
 use anyhow::Result;
 
 #[cfg(feature = "v2")]
-use std::path::PathBuf;
-#[cfg(feature = "v2")]
 use run::v2::cli::{V2Command, execute as execute_v2};
+#[cfg(feature = "v2")]
+use std::path::PathBuf;
 
 fn main() -> Result<()> {
     #[cfg(feature = "v2")]

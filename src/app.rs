@@ -74,9 +74,7 @@ fn check_toolchains(registry: &LanguageRegistry) -> Result<i32> {
     );
 
     if missing > 0 {
-        println!(
-            "\n  Tip: Install missing toolchains to enable those languages."
-        );
+        println!("\n  Tip: Install missing toolchains to enable those languages.");
     }
 
     Ok(0)
@@ -143,12 +141,10 @@ fn install_package(language: &LanguageSpec, package: &str) -> Result<i32> {
         return Ok(1);
     }
 
-    let mut cmd = build_install_command(lang_id, package)
-        .context("failed to build install command")?;
+    let mut cmd =
+        build_install_command(lang_id, package).context("failed to build install command")?;
 
-    eprintln!(
-        "\x1b[36m[run]\x1b[0m Installing '{package}' for {lang_id}..."
-    );
+    eprintln!("\x1b[36m[run]\x1b[0m Installing '{package}' for {lang_id}...");
 
     let status = cmd
         .stdin(std::process::Stdio::inherit())
@@ -158,14 +154,10 @@ fn install_package(language: &LanguageSpec, package: &str) -> Result<i32> {
         .with_context(|| format!("failed to run package manager for {lang_id}"))?;
 
     if status.success() {
-        eprintln!(
-            "\x1b[32m[run]\x1b[0m Successfully installed '{package}' for {lang_id}"
-        );
+        eprintln!("\x1b[32m[run]\x1b[0m Successfully installed '{package}' for {lang_id}");
         Ok(0)
     } else {
-        eprintln!(
-            "\x1b[31m[run]\x1b[0m Failed to install '{package}' for {lang_id}"
-        );
+        eprintln!("\x1b[31m[run]\x1b[0m Failed to install '{package}' for {lang_id}");
         Ok(status.code().unwrap_or(1))
     }
 }
@@ -184,9 +176,9 @@ fn bench_run(spec: ExecutionSpec, registry: &LanguageRegistry, iterations: u32) 
         .resolve(&language)
         .context("failed to resolve language engine")?;
 
-    engine.validate().with_context(|| {
-        format!("{} is not available", engine.display_name())
-    })?;
+    engine
+        .validate()
+        .with_context(|| format!("{} is not available", engine.display_name()))?;
 
     eprintln!(
         "\x1b[1mBenchmark:\x1b[0m {} — {} iteration{}",
@@ -274,9 +266,9 @@ fn watch_run(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32> {
         .resolve(&language)
         .context("failed to resolve language engine")?;
 
-    engine.validate().with_context(|| {
-        format!("{} is not available", engine.display_name())
-    })?;
+    engine
+        .validate()
+        .with_context(|| format!("{} is not available", engine.display_name()))?;
 
     eprintln!(
         "\x1b[1m[watch]\x1b[0m Watching \x1b[36m{}\x1b[0m ({}). Press Ctrl+C to stop.",
@@ -312,7 +304,9 @@ fn watch_run(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32> {
 }
 
 fn run_file_once(file_path: &Path, engine: &dyn crate::engine::LanguageEngine) {
-    let payload = ExecutionPayload::File { path: file_path.to_path_buf() };
+    let payload = ExecutionPayload::File {
+        path: file_path.to_path_buf(),
+    };
     match engine.execute(&payload) {
         Ok(outcome) => {
             if !outcome.stdout.is_empty() {

@@ -43,21 +43,24 @@ impl RunConfig {
     pub fn load(path: &Path) -> Result<Self, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        toml::from_str(&content)
-            .map_err(|e| format!("invalid config in {}: {e}", path.display()))
+        toml::from_str(&content).map_err(|e| format!("invalid config in {}: {e}", path.display()))
     }
 
     pub fn apply_env(&self) {
         if let Some(secs) = self.timeout {
             if std::env::var("RUN_TIMEOUT_SECS").is_err() {
                 // SAFETY: called once at startup before any threads are spawned.
-                unsafe { std::env::set_var("RUN_TIMEOUT_SECS", secs.to_string()); }
+                unsafe {
+                    std::env::set_var("RUN_TIMEOUT_SECS", secs.to_string());
+                }
             }
         }
         if let Some(true) = self.timing {
             if std::env::var("RUN_TIMING").is_err() {
                 // SAFETY: called once at startup before any threads are spawned.
-                unsafe { std::env::set_var("RUN_TIMING", "1"); }
+                unsafe {
+                    std::env::set_var("RUN_TIMING", "1");
+                }
             }
         }
     }

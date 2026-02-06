@@ -642,7 +642,7 @@ pub struct ComponentInfo {
 mod tests {
     use super::*;
     use std::process::Command;
-    use std::sync::{mpsc, Arc};
+    use std::sync::{Arc, mpsc};
     use std::time::Duration;
 
     #[test]
@@ -678,7 +678,11 @@ mod tests {
     #[test]
     #[cfg(feature = "v2")]
     fn test_instantiate_does_not_deadlock() {
-        if Command::new("wasm-tools").arg("--version").output().is_err() {
+        if Command::new("wasm-tools")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
             eprintln!("skipping: wasm-tools not available in PATH");
             return;
         }
@@ -712,7 +716,11 @@ mod tests {
     #[test]
     #[cfg(feature = "v2")]
     fn test_call_resolves_unqualified_function() {
-        if Command::new("wasm-tools").arg("--version").output().is_err() {
+        if Command::new("wasm-tools")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
             eprintln!("skipping: wasm-tools not available in PATH");
             return;
         }

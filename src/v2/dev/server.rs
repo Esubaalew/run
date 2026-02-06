@@ -67,9 +67,9 @@ impl DevServer {
         let listener = TcpListener::bind(&addr).map_err(|err| {
             crate::v2::Error::other(format!("[devserver] failed to bind {}: {}", addr, err))
         })?;
-        listener
-            .set_nonblocking(true)
-            .map_err(|err| crate::v2::Error::other(format!("[devserver] non-blocking failed: {}", err)))?;
+        listener.set_nonblocking(true).map_err(|err| {
+            crate::v2::Error::other(format!("[devserver] non-blocking failed: {}", err))
+        })?;
 
         self.running.store(true, Ordering::SeqCst);
         let running = Arc::clone(&self.running);

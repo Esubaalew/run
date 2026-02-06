@@ -126,7 +126,9 @@ impl LanguageEngine for KotlinEngine {
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Check jar cache for inline/stdin payloads
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+                Some(code.as_str())
+            }
             _ => None,
         } {
             let wrapped = wrap_inline_kotlin(code);
@@ -177,7 +179,9 @@ impl LanguageEngine for KotlinEngine {
 
         // Cache the compiled jar
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+                Some(code.as_str())
+            }
             _ => None,
         } {
             let wrapped = wrap_inline_kotlin(code);
