@@ -4,15 +4,26 @@
 //! Uses wasm-tools under the hood.
 
 use super::{
-    WitFunction, WitInterface, WitInterfaceRef, WitPackage, WitPackageId, WitParam, WitResults,
-    WitType, WitWorld, WitWorldItem,
+    WitCase, WitField, WitFunction, WitInterface, WitInterfaceRef, WitPackage, WitPackageId,
+    WitParam, WitResults, WitType, WitWorld, WitWorldItem,
 };
 use crate::v2::{Error, Result};
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
+use wit_parser::decoding::decode;
+use wit_parser::{InterfaceId, PackageId, Resolve, Type, TypeDefKind, TypeId, WorldItem, WorldKey};
 
 pub fn extract_wit(component_path: &Path) -> Result<WitPackage> {
+    let bytes = std::fs::read(component_path)?;
+    if let Ok(pkg) = extract_wit_from_bytes_pure(&bytes) {
+        return Ok(pkg);
+    }
+    extract_wit_with_wasm_tools(component_path)
+}
+
+fn extract_wit_with_wasm_tools(component_path: &Path) -> Result<WitPackage> {
     let output = Command::new("wasm-tools")
         .args(["component", "wit", component_path.to_str().unwrap()])
         .output()
@@ -33,11 +44,290 @@ pub fn extract_wit(component_path: &Path) -> Result<WitPackage> {
 }
 
 pub fn extract_wit_from_bytes(bytes: &[u8]) -> Result<WitPackage> {
+    if let Ok(pkg) = extract_wit_from_bytes_pure(bytes) {
+        return Ok(pkg);
+    }
     let temp_dir = tempfile::tempdir()
         .map_err(|e| Error::other(format!("Failed to create temp dir: {}", e)))?;
     let temp_path = temp_dir.path().join("component.wasm");
     std::fs::write(&temp_path, bytes)?;
-    extract_wit(&temp_path)
+    extract_wit_with_wasm_tools(&temp_path)
+}
+
+fn extract_wit_from_bytes_pure(bytes: &[u8]) -> Result<WitPackage> {
+    let decoded = decode(bytes).map_err(|e| Error::other(format!("WIT decode failed: {}", e)))?;
+    let resolve = decoded.resolve();
+    let package_id = decoded.package();
+    wit_package_from_resolve(resolve, package_id)
+}
+
+fn wit_package_from_resolve(resolve: &Resolve, package_id: PackageId) -> Result<WitPackage> {
+    let package = resolve
+        .packages
+        .get(package_id)
+        .ok_or_else(|| Error::other("WIT package not found in resolve"))?;
+
+    let id = WitPackageId {
+        namespace: package.name.namespace.clone(),
+        name: package.name.name.clone(),
+        version: package.name.version.clone(),
+    };
+
+    let mut interfaces = HashMap::new();
+    for (name, iface_id) in package.interfaces.iter() {
+        let iface = &resolve.interfaces[*iface_id];
+        let mut functions = HashMap::new();
+        for (func_name, func) in iface.functions.iter() {
+            functions.insert(func_name.clone(), convert_function(resolve, func));
+        }
+
+        let mut types = HashMap::new();
+        for (type_name, type_id) in iface.types.iter() {
+            let ty = convert_type_id(resolve, *type_id);
+            types.insert(type_name.clone(), ty);
+        }
+
+        interfaces.insert(
+            name.clone(),
+            WitInterface {
+                name: name.clone(),
+                types,
+                functions,
+                docs: iface.docs.contents.clone(),
+            },
+        );
+    }
+
+    let mut worlds = HashMap::new();
+    for (name, world_id) in package.worlds.iter() {
+        let world = &resolve.worlds[*world_id];
+        let imports = convert_world_items(resolve, package_id, &world.imports);
+        let exports = convert_world_items(resolve, package_id, &world.exports);
+        worlds.insert(
+            name.clone(),
+            WitWorld {
+                name: name.clone(),
+                imports,
+                exports,
+                docs: world.docs.contents.clone(),
+            },
+        );
+    }
+
+    Ok(WitPackage {
+        id,
+        interfaces,
+        worlds,
+    })
+}
+
+fn convert_world_items(
+    resolve: &Resolve,
+    package_id: PackageId,
+    items: &IndexMap<WorldKey, WorldItem>,
+) -> Vec<WitWorldItem> {
+    let mut results = Vec::new();
+
+    for (key, item) in items {
+        let name = world_key_name(resolve, key);
+        match item {
+            WorldItem::Interface { id, .. } => {
+                let interface_ref = convert_interface_ref(resolve, package_id, *id, &name);
+                results.push(WitWorldItem::Interface { name, interface: interface_ref });
+            }
+            WorldItem::Function(func) => {
+                results.push(WitWorldItem::Function(convert_function(resolve, func)));
+            }
+            WorldItem::Type(type_id) => {
+                results.push(WitWorldItem::Type {
+                    name,
+                    ty: convert_type_id(resolve, *type_id),
+                });
+            }
+        }
+    }
+
+    results
+}
+
+fn world_key_name(resolve: &Resolve, key: &WorldKey) -> String {
+    match key {
+        WorldKey::Name(name) => name.clone(),
+        WorldKey::Interface(id) => resolve.interfaces[*id]
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("interface-{}", id.index())),
+    }
+}
+
+fn convert_interface_ref(
+    resolve: &Resolve,
+    current_package: PackageId,
+    interface_id: InterfaceId,
+    fallback_name: &str,
+) -> WitInterfaceRef {
+    let interface = &resolve.interfaces[interface_id];
+    let name = interface
+        .name
+        .clone()
+        .unwrap_or_else(|| fallback_name.to_string());
+
+    match interface.package {
+        Some(pkg_id) if pkg_id != current_package => {
+            let pkg = &resolve.packages[pkg_id];
+            WitInterfaceRef::External {
+                package: WitPackageId {
+                    namespace: pkg.name.namespace.clone(),
+                    name: pkg.name.name.clone(),
+                    version: pkg.name.version.clone(),
+                },
+                interface: name,
+            }
+        }
+        _ => WitInterfaceRef::Local(name),
+    }
+}
+
+fn convert_function(resolve: &Resolve, func: &wit_parser::Function) -> WitFunction {
+    let params = func
+        .params
+        .iter()
+        .map(|(name, ty)| WitParam {
+            name: name.clone(),
+            ty: convert_type(resolve, ty),
+        })
+        .collect();
+
+    let results = match &func.results {
+        wit_parser::Results::Named(items) => {
+            if items.is_empty() {
+                WitResults::None
+            } else {
+                WitResults::Named(
+                    items
+                        .iter()
+                        .map(|(name, ty)| WitParam {
+                            name: name.clone(),
+                            ty: convert_type(resolve, ty),
+                        })
+                        .collect(),
+                )
+            }
+        }
+        wit_parser::Results::Anon(ty) => WitResults::Anon(convert_type(resolve, ty)),
+    };
+
+    WitFunction {
+        name: func.name.clone(),
+        params,
+        results,
+        docs: func.docs.contents.clone(),
+    }
+}
+
+fn convert_type(resolve: &Resolve, ty: &Type) -> WitType {
+    match ty {
+        Type::Bool => WitType::Bool,
+        Type::U8 => WitType::U8,
+        Type::U16 => WitType::U16,
+        Type::U32 => WitType::U32,
+        Type::U64 => WitType::U64,
+        Type::S8 => WitType::S8,
+        Type::S16 => WitType::S16,
+        Type::S32 => WitType::S32,
+        Type::S64 => WitType::S64,
+        Type::F32 => WitType::F32,
+        Type::F64 => WitType::F64,
+        Type::Char => WitType::Char,
+        Type::String => WitType::String,
+        Type::Id(id) => convert_type_id(resolve, *id),
+    }
+}
+
+fn convert_type_id(resolve: &Resolve, type_id: TypeId) -> WitType {
+    let mut visiting = std::collections::HashSet::new();
+    convert_type_id_inner(resolve, type_id, &mut visiting)
+}
+
+fn convert_type_id_inner(
+    resolve: &Resolve,
+    type_id: TypeId,
+    visiting: &mut std::collections::HashSet<TypeId>,
+) -> WitType {
+    if !visiting.insert(type_id) {
+        return WitType::Named("recursive".to_string());
+    }
+
+    let def = &resolve.types[type_id];
+    if let Some(name) = &def.name {
+        visiting.remove(&type_id);
+        return WitType::Named(name.clone());
+    }
+
+    let result = match &def.kind {
+        TypeDefKind::Record(record) => WitType::Record {
+            fields: record
+                .fields
+                .iter()
+                .map(|field| WitField {
+                    name: field.name.clone(),
+                    ty: convert_type(resolve, &field.ty),
+                })
+                .collect(),
+        },
+        TypeDefKind::Variant(variant) => WitType::Variant {
+            cases: variant
+                .cases
+                .iter()
+                .map(|case| WitCase {
+                    name: case.name.clone(),
+                    ty: case.ty.as_ref().map(|ty| convert_type(resolve, ty)),
+                })
+                .collect(),
+        },
+        TypeDefKind::Enum(enum_) => WitType::Enum {
+            cases: enum_.cases.iter().map(|c| c.name.clone()).collect(),
+        },
+        TypeDefKind::Flags(flags) => WitType::Flags {
+            flags: flags.flags.iter().map(|f| f.name.clone()).collect(),
+        },
+        TypeDefKind::Tuple(tuple) => WitType::Tuple(
+            tuple
+                .types
+                .iter()
+                .map(|ty| convert_type(resolve, ty))
+                .collect(),
+        ),
+        TypeDefKind::Option(inner) => {
+            WitType::Option(Box::new(convert_type(resolve, inner)))
+        }
+        TypeDefKind::Result(result) => WitType::Result {
+            ok: result.ok.as_ref().map(|ty| Box::new(convert_type(resolve, ty))),
+            err: result.err.as_ref().map(|ty| Box::new(convert_type(resolve, ty))),
+        },
+        TypeDefKind::List(inner) => WitType::List(Box::new(convert_type(resolve, inner))),
+        TypeDefKind::Type(inner) => convert_type(resolve, inner),
+        TypeDefKind::Handle(handle) => match handle {
+            wit_parser::Handle::Own(id) => WitType::Own(resource_name(resolve, *id)),
+            wit_parser::Handle::Borrow(id) => WitType::Borrow(resource_name(resolve, *id)),
+        },
+        TypeDefKind::Resource => WitType::Resource {
+            name: def.name.clone().unwrap_or_else(|| "resource".to_string()),
+        },
+        TypeDefKind::Future(_) => WitType::Named("future".to_string()),
+        TypeDefKind::Stream(_) => WitType::Named("stream".to_string()),
+        TypeDefKind::Unknown => WitType::Named("unknown".to_string()),
+    };
+
+    visiting.remove(&type_id);
+    result
+}
+
+fn resource_name(resolve: &Resolve, type_id: TypeId) -> String {
+    resolve.types[type_id]
+        .name
+        .clone()
+        .unwrap_or_else(|| "resource".to_string())
 }
 
 fn parse_wit_output(wit: &str) -> Result<WitPackage> {
@@ -386,6 +676,7 @@ pub fn get_imports(component_path: &Path) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wit_parser::Resolve;
 
     #[test]
     fn test_parse_package_id() {
@@ -433,5 +724,27 @@ world calculator-impl {
         let calc = package.interfaces.get("calculator").unwrap();
         assert!(calc.functions.contains_key("add"));
         assert!(calc.functions.contains_key("subtract"));
+    }
+
+    #[test]
+    fn test_wit_package_from_resolve() {
+        let wit = r#"
+package test:calc@0.1.0;
+
+interface calculator {
+  add: func(a: s32, b: s32) -> s32;
+}
+
+world calculator-impl {
+  export calculator;
+}
+"#;
+        let mut resolve = Resolve::default();
+        let package_id = resolve.push_str("in-memory.wit", wit).unwrap();
+        let package = wit_package_from_resolve(&resolve, package_id).unwrap();
+        assert_eq!(package.id.namespace, "test");
+        assert_eq!(package.id.name, "calc");
+        assert!(package.interfaces.contains_key("calculator"));
+        assert!(package.worlds.contains_key("calculator-impl"));
     }
 }

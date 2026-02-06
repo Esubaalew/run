@@ -1,6 +1,7 @@
 use anyhow::Result;
-use std::path::PathBuf;
 
+#[cfg(feature = "v2")]
+use std::path::PathBuf;
 #[cfg(feature = "v2")]
 use run::v2::cli::{V2Command, execute as execute_v2};
 
@@ -23,6 +24,11 @@ fn main() -> Result<()> {
             let subcommand = &v2_args[0];
             let cwd = std::env::current_dir()?;
             let has_flag = |flag: &str| v2_args.iter().any(|a| a == flag);
+
+            if has_flag("--help") || has_flag("-h") {
+                run::v2::cli::print_subcommand_help(subcommand);
+                std::process::exit(0);
+            }
 
             let v2_cmd = match subcommand.as_str() {
                 "dev" => {
@@ -130,11 +136,14 @@ fn main() -> Result<()> {
                                 i += 1;
                             }
                             "--args" if i + 1 < v2_args.len() => {
-                                call_args = v2_args[i + 1]
-                                    .split(',')
-                                    .map(|s| s.trim().to_string())
-                                    .filter(|s| !s.is_empty())
-                                    .collect();
+                                // Support both comma-separated (--args "3,4")
+                                // and repeated (--args 3 --args 4) forms.
+                                for part in v2_args[i + 1].split(',') {
+                                    let trimmed = part.trim().to_string();
+                                    if !trimmed.is_empty() {
+                                        call_args.push(trimmed);
+                                    }
+                                }
                                 i += 1;
                             }
                             _ if !v2_args[i].starts_with('-') && target.is_none() => {
@@ -355,6 +364,10 @@ fn main() -> Result<()> {
             }
         }
     }
+
+    // Load project config (run.toml / .runrc) and apply environment overrides
+    let config = run::config::RunConfig::discover();
+    config.apply_env();
 
     let command = run::cli::parse()?;
     let exit_code = run::app::run(command)?;

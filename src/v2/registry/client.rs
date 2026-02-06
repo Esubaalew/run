@@ -252,21 +252,35 @@ impl RegistryClient {
         self.get_version_info(name, &version).await
     }
 
+    /// Rewrite download URLs that point to localhost so they use
+    /// the client's configured registry URL instead.  This guards
+    /// against a server whose REGISTRY_URL env var was not set.
+    fn rewrite_download_url(&self, raw: &str) -> String {
+        if raw.starts_with("http://localhost") || raw.starts_with("http://127.0.0.1") {
+            if let Some(path_start) = raw.find("/packages/") {
+                let base = self.config.registry_url.trim_end_matches('/');
+                return format!("{}{}", base, &raw[path_start..]);
+            }
+        }
+        raw.to_string()
+    }
+
     pub async fn download(&self, name: &str, version: &Version) -> Result<Vec<u8>> {
         let info = self.get_version_info(name, version).await?;
+        let download_url = self.rewrite_download_url(&info.download_url);
 
         let response = self
             .http
-            .get(&info.download_url)
+            .get(&download_url)
             .send()
             .await
             .map_err(|_| Error::RegistryUnavailable {
-                url: info.download_url.clone(),
+                url: download_url.clone(),
             })?;
 
         if !response.status().is_success() {
             return Err(Error::RegistryUnavailable {
-                url: info.download_url.clone(),
+                url: download_url.clone(),
             });
         }
 

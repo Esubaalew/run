@@ -7,7 +7,10 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession,
+    cache_store, execution_timeout, hash_source, try_cached_execution, wait_with_timeout,
+};
 
 pub struct GoEngine {
     executable: Option<PathBuf>,
@@ -62,13 +65,14 @@ impl GoEngine {
         } else {
             cmd.arg(source);
         }
-        cmd.output().with_context(|| {
+        let child = cmd.spawn().with_context(|| {
             format!(
                 "failed to invoke {} to run {}",
                 binary.display(),
                 source.display()
             )
-        })
+        })?;
+        wait_with_timeout(child, execution_timeout())
     }
 }
 
@@ -103,23 +107,96 @@ impl LanguageEngine for GoEngine {
     }
 
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
+        // Try cache for inline/stdin payloads
+        if let Some(code) = match payload {
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            _ => None,
+        } {
+            let src_hash = hash_source(code);
+            if let Some(output) = try_cached_execution(src_hash) {
+                let start = Instant::now();
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: output.status.code(),
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+        }
+
         let binary = self.ensure_executable()?;
         let start = Instant::now();
 
-        let (temp_dir, source_path) = match payload {
+        let (temp_dir, source_path, cache_key) = match payload {
             ExecutionPayload::Inline { code } => {
+                let h = hash_source(code);
                 let (dir, path) = self.write_temp_source(code)?;
-                (Some(dir), path)
+                (Some(dir), path, Some(h))
             }
             ExecutionPayload::Stdin { code } => {
+                let h = hash_source(code);
                 let (dir, path) = self.write_temp_source(code)?;
-                (Some(dir), path)
+                (Some(dir), path, Some(h))
             }
-            ExecutionPayload::File { path } => (None, path.clone()),
+            ExecutionPayload::File { path } => (None, path.clone(), None),
         };
 
-        let output = self.execute_with_path(binary, &source_path)?;
+        // For cacheable code, use go build + run instead of go run
+        if let Some(h) = cache_key {
+            let dir = source_path.parent().unwrap_or(std::path::Path::new("."));
+            let bin_path = dir.join("run_go_binary");
+            let mut build_cmd = Command::new(binary);
+            build_cmd
+                .arg("build")
+                .arg("-o")
+                .arg(&bin_path)
+                .env("GO111MODULE", "off")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            if let Some(file_name) = source_path.file_name() {
+                build_cmd.current_dir(dir).arg(file_name);
+            } else {
+                build_cmd.arg(&source_path);
+            }
 
+            let build_output = build_cmd.output().with_context(|| {
+                format!("failed to invoke {} to build Go source", binary.display())
+            })?;
+
+            if !build_output.status.success() {
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: build_output.status.code(),
+                    stdout: String::from_utf8_lossy(&build_output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&build_output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+
+            cache_store(h, &bin_path);
+
+            let mut run_cmd = Command::new(&bin_path);
+            run_cmd
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .stdin(Stdio::inherit());
+            let child = run_cmd.spawn().with_context(|| {
+                format!("failed to execute compiled Go binary {}", bin_path.display())
+            })?;
+            let output = wait_with_timeout(child, execution_timeout())?;
+
+            drop(temp_dir);
+            return Ok(ExecutionOutcome {
+                language: self.id().to_string(),
+                exit_code: output.status.code(),
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                duration: start.elapsed(),
+            });
+        }
+
+        let output = self.execute_with_path(binary, &source_path)?;
         drop(temp_dir);
 
         Ok(ExecutionOutcome {

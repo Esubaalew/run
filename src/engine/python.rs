@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, execution_timeout, wait_with_timeout};
 
 pub struct PythonEngine {
     executable: PathBuf,
@@ -59,17 +59,29 @@ impl LanguageEngine for PythonEngine {
 
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
+        let timeout = execution_timeout();
         let mut cmd = self.run_command();
         let output = match payload {
             ExecutionPayload::Inline { code } => {
-                cmd.arg("-c").arg(code);
-                cmd.stdin(Stdio::inherit());
-                cmd.output()
+                cmd.arg("-c")
+                    .arg(code)
+                    .stdin(Stdio::inherit())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                let child = cmd.spawn().with_context(|| {
+                    format!("failed to start {}", self.binary().display())
+                })?;
+                wait_with_timeout(child, timeout)?
             }
             ExecutionPayload::File { path } => {
-                cmd.arg(path);
-                cmd.stdin(Stdio::inherit());
-                cmd.output()
+                cmd.arg(path)
+                    .stdin(Stdio::inherit())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                let child = cmd.spawn().with_context(|| {
+                    format!("failed to start {}", self.binary().display())
+                })?;
+                wait_with_timeout(child, timeout)?
             }
             ExecutionPayload::Stdin { code } => {
                 cmd.arg("-")
@@ -85,9 +97,9 @@ impl LanguageEngine for PythonEngine {
                 if let Some(mut stdin) = child.stdin.take() {
                     stdin.write_all(code.as_bytes())?;
                 }
-                child.wait_with_output()
+                wait_with_timeout(child, timeout)?
             }
-        }?;
+        };
 
         Ok(ExecutionOutcome {
             language: self.id().to_string(),
@@ -292,7 +304,8 @@ fn ensure_trailing_newline(code: &str) -> String {
 }
 
 fn wrap_expression(code: &str, index: usize) -> String {
-    format!("__run_value_{index} = ({code})\nprint(repr(__run_value_{index}), flush=True)\n")
+    // Store result in both a unique var and `_` for last-result access
+    format!("__run_value_{index} = ({code})\n_ = __run_value_{index}\nprint(repr(__run_value_{index}), flush=True)\n")
 }
 
 fn diff_output(previous: &str, current: &str) -> String {

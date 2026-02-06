@@ -6,6 +6,35 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.5.0] - 2026-02-06
+
+### Added
+
+- **Compilation cache** for compiled languages (Rust, C, C++, Go, Java, Kotlin, Zig). Repeated runs of the same source skip recompilation, dramatically improving execution speed.
+- **`--bench N`** CLI flag to benchmark code execution with statistical output (min, max, avg, median, stddev).
+- **`--watch` / `-w`** flag for file watching — automatically re-executes on save.
+- **`:bench [N] <code>`** REPL command for in-session benchmarking.
+- **`:type` / `:which`** REPL command to display the active language and session state.
+- **`run install <package>`** per-language package installation (pip, npm, cargo, etc.).
+- **Project config files** (`run.toml` / `.runrc`) for default language, timeout, and timing settings.
+- **GitHub Actions CI** pipeline with check, test, and build jobs across Linux, macOS, and Windows.
+
+### Changed
+
+- REPL startup banner redesigned with cleaner styling and language count.
+- REPL error output now displayed in red for visibility.
+- Duration display uses human-readable format (e.g., "1m 3s", "12.34s", "56ms").
+- Improved multi-line input handling for Python blocks (def, class, if, for, while, try, with).
+- Tab completion for REPL meta-commands and language names.
+- Session variable `_` stores the last evaluation result.
+- Help output reformatted with categorized commands and descriptions.
+- Removed informal comments; professional codebase tone throughout.
+
+### Fixed
+
+- Python dict literals with `:` no longer falsely trigger multi-line block mode.
+- Compilation errors in Rust/C/C++ inline snippets now display properly in the REPL.
+
 ## [0.4.0] - 2026-02-05
 
 ### Added
@@ -94,7 +123,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/esubaalew/run/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/esubaalew/run/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/esubaalew/run/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/esubaalew/run/compare/v0.3.0...v0.3.1

@@ -378,6 +378,7 @@ impl ComponentBuilder {
     }
 
     fn build_zig(&self, source_dir: &Path, name: &str) -> Result<PathBuf> {
+        let module_wasm = self.config.output_dir.join(format!("{}.module.wasm", name));
         let dest = self.config.output_dir.join(format!("{}.wasm", name));
         let optimize = if self.config.release {
             "ReleaseFast"
@@ -409,14 +410,41 @@ impl ComponentBuilder {
         let wasm_path = find_first_wasm(&source_dir.join("zig-out"))
             .ok_or_else(|| Error::other("Zig build did not produce a wasm output".to_string()))?;
 
-        std::fs::copy(&wasm_path, &dest).map_err(|e| {
+        std::fs::copy(&wasm_path, &module_wasm).map_err(|e| {
             Error::other(format!(
                 "Failed to copy {} to {}: {}",
                 wasm_path.display(),
-                dest.display(),
+                module_wasm.display(),
                 e
             ))
         })?;
+
+        // Wrap the WASI preview1 module as a WASI 0.2 component.
+        let mut componentize = Command::new("wasm-tools");
+        componentize.args([
+            "component",
+            "new",
+            module_wasm.to_str().unwrap(),
+            "-o",
+            dest.to_str().unwrap(),
+        ]);
+        componentize.current_dir(source_dir);
+        self.apply_reproducible_env(&mut componentize);
+
+        let output = componentize.output().map_err(|e| {
+            Error::other(format!(
+                "Failed to run wasm-tools component new. Is wasm-tools installed? Error: {}",
+                e
+            ))
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(Error::other(format!(
+                "wasm-tools component new failed:\n{}",
+                stderr
+            )));
+        }
 
         Ok(dest)
     }
@@ -681,6 +709,7 @@ fn extract_imports(wit: &str) -> Vec<String> {
 }
 
 fn validate_wasm_header(bytes: &[u8], path: &Path) -> Result<()> {
+    // 1. Magic number check
     let expected = [0x00, 0x61, 0x73, 0x6d];
     if bytes.len() < expected.len() || bytes[..4] != expected {
         return Err(Error::InvalidComponent {
@@ -688,6 +717,36 @@ fn validate_wasm_header(bytes: &[u8], path: &Path) -> Result<()> {
             reason: "Output is not a valid WASM binary".to_string(),
         });
     }
+
+    // 2. Check that it's a component (layer byte 0x0d) not just a module (0x01).
+    //    Components use WASM binary format version with layer = 0x0d at byte 4.
+    let is_component = bytes.len() >= 8 && bytes[4..8] == [0x0d, 0x00, 0x01, 0x00];
+    if !is_component {
+        eprintln!(
+            "WARNING: {} is a WASM module, not a component. \
+             Use `wasm-tools component new` to wrap it.",
+            path.display()
+        );
+    }
+
+    // 3. Full structural validation via wasm-tools (if available).
+    let validation = Command::new("wasm-tools")
+        .args(["validate", path.to_str().unwrap_or("")])
+        .output();
+    match validation {
+        Ok(output) if !output.status.success() => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(Error::InvalidComponent {
+                path: path.to_path_buf(),
+                reason: format!("Component validation failed: {}", stderr.trim()),
+            });
+        }
+        Err(_) => {
+            // wasm-tools not installed; header check is all we can do.
+        }
+        _ => {} // validation passed
+    }
+
     Ok(())
 }
 

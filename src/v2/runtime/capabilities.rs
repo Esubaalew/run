@@ -101,6 +101,8 @@ impl CapabilitySet {
         set.grant(Capability::Stdin);
         set.grant(Capability::Args);
         set.grant(Capability::Exit);
+        set.grant(Capability::Cwd);
+        set.grant(Capability::Clock);
         set
     }
 
@@ -233,14 +235,26 @@ impl SecurityPolicy {
     }
 
     pub fn strict() -> Self {
-        Self::production()
+        Self {
+            mode: PolicyMode::Production,
+            cli_default: CapabilitySet::deterministic(),
+            service_default: CapabilitySet::deterministic(),
+            max_memory: 64 * 1024 * 1024, // 64 MB
+            max_execution_time_ms: 5_000,
+            max_fuel: 1_000_000_000,
+            allow_unrestricted: false,
+            allowed_hosts: vec![],
+            blocked_hosts: vec![],
+        }
     }
 
     pub fn is_host_allowed(&self, host: &str) -> bool {
         if self.blocked_hosts.iter().any(|h| host_matches(h, host)) {
             return false;
         }
-        self.allowed_hosts.iter().any(|h| host_matches(h, host))
+        // Empty allowed_hosts means "allow all" (blocklist-only mode).
+        // Non-empty allowed_hosts acts as a whitelist.
+        self.allowed_hosts.is_empty() || self.allowed_hosts.iter().any(|h| host_matches(h, host))
     }
 
     pub fn is_dev(&self) -> bool {

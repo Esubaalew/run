@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, execution_timeout, wait_with_timeout};
 
 pub struct JavascriptEngine {
     executable: PathBuf,
@@ -59,18 +59,29 @@ impl LanguageEngine for JavascriptEngine {
 
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
+        let timeout = execution_timeout();
         let output = match payload {
             ExecutionPayload::Inline { code } => {
                 let mut cmd = self.run_command();
-                cmd.arg("-e").arg(code);
-                cmd.stdin(Stdio::inherit());
-                cmd.output()
+                cmd.arg("-e").arg(code)
+                    .stdin(Stdio::inherit())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                let child = cmd.spawn().with_context(|| {
+                    format!("failed to start {}", self.binary().display())
+                })?;
+                wait_with_timeout(child, timeout)?
             }
             ExecutionPayload::File { path } => {
                 let mut cmd = self.run_command();
-                cmd.arg(path);
-                cmd.stdin(Stdio::inherit());
-                cmd.output()
+                cmd.arg(path)
+                    .stdin(Stdio::inherit())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                let child = cmd.spawn().with_context(|| {
+                    format!("failed to start {}", self.binary().display())
+                })?;
+                wait_with_timeout(child, timeout)?
             }
             ExecutionPayload::Stdin { code } => {
                 let mut cmd = self.run_command();
@@ -91,9 +102,9 @@ impl LanguageEngine for JavascriptEngine {
                     }
                     stdin.flush()?;
                 }
-                child.wait_with_output()
+                wait_with_timeout(child, timeout)?
             }
-        }?;
+        };
 
         Ok(ExecutionOutcome {
             language: self.id().to_string(),
@@ -130,7 +141,7 @@ impl LanguageEngine for JavascriptEngine {
                 match reader.read_line(&mut buf) {
                     Ok(0) => break,
                     Ok(_) => {
-                        let mut lock = stderr_collector.lock().expect("stderr collector poisoned");
+                        let Ok(mut lock) = stderr_collector.lock() else { break };
                         lock.push_str(&buf);
                     }
                     Err(_) => break,
@@ -211,7 +222,9 @@ impl JavascriptSession {
     }
 
     fn take_stderr(&self) -> String {
-        let mut lock = self.stderr.lock().expect("stderr lock poisoned");
+        let Ok(mut lock) = self.stderr.lock() else {
+            return String::new();
+        };
         if lock.is_empty() {
             String::new()
         } else {
@@ -234,6 +247,7 @@ impl LanguageSession for JavascriptSession {
     }
 
     fn eval(&mut self, code: &str) -> Result<ExecutionOutcome> {
+        // Node.js REPL natively stores the last expression result in `_`.
         let start = Instant::now();
         self.write_code(code)?;
         let stdout = self.read_until_prompt()?;

@@ -2335,7 +2335,7 @@ dependencies = [
 
 [[package]]
 name = "run-kit"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2345,6 +2345,7 @@ dependencies = [
  "criterion",
  "futures",
  "hex",
+ "indexmap",
  "notify",
  "once_cell",
  "predicates",
@@ -2365,7 +2366,9 @@ dependencies = [
  "urlencoding",
  "wasmtime",
  "wasmtime-wasi",
+ "wat",
  "which",
+ "wit-parser",
 ]
 
 [[package]]

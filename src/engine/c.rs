@@ -7,7 +7,10 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession,
+    cache_store, hash_source, try_cached_execution,
+};
 
 pub struct CEngine {
     compiler: Option<PathBuf>,
@@ -126,17 +129,38 @@ impl LanguageEngine for CEngine {
     }
 
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
+        // Try cache for inline/stdin payloads
+        if let Some(code) = match payload {
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            _ => None,
+        } {
+            let prepared = prepare_inline_source(code);
+            let src_hash = hash_source(&prepared);
+            if let Some(output) = try_cached_execution(src_hash) {
+                let start = Instant::now();
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: output.status.code(),
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+        }
+
         let temp_dir = Builder::new()
             .prefix("run-c")
             .tempdir()
             .context("failed to create temporary directory for c build")?;
         let dir_path = temp_dir.path();
 
-        let source_path = match payload {
+        let (source_path, cache_key) = match payload {
             ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
-                self.write_source(code, dir_path)?
+                let prepared = prepare_inline_source(code);
+                let h = hash_source(&prepared);
+                (self.write_source(code, dir_path)?, Some(h))
             }
-            ExecutionPayload::File { path } => self.copy_source(path, dir_path)?,
+            ExecutionPayload::File { path } => (self.copy_source(path, dir_path)?, None),
         };
 
         let binary_path = Self::binary_path(dir_path);
@@ -151,6 +175,10 @@ impl LanguageEngine for CEngine {
                 stderr: String::from_utf8_lossy(&compile_output.stderr).into_owned(),
                 duration: start.elapsed(),
             });
+        }
+
+        if let Some(h) = cache_key {
+            cache_store(h, &binary_path);
         }
 
         let run_output = self.run_binary(&binary_path)?;

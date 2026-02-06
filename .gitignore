@@ -29,6 +29,9 @@ registry-server/target/
 # Logs
 *.log
 
+# Local sandbox
+.run-lab/
+
 # Exclude incomplete/redundant directories
 /runtime/
 /examples/swap-demo/

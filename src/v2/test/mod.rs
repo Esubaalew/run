@@ -75,8 +75,41 @@ pub fn run_tests(options: TestOptions) -> Result<TestReport> {
         }
     }
 
+    // Auto-discover tests from component exports when no tests are configured.
+    if total == 0 {
+        let discovered = discover_tests(&config, &options.project_dir, &mut engine)?;
+        for (test_name, test_case) in &discovered {
+            if let Some(ref filter) = options.component {
+                if &test_case.component != filter {
+                    continue;
+                }
+            }
+            total += 1;
+            match run_single_test(&config, &options.project_dir, &mut engine, &mut handles, test_case) {
+                Ok(()) => {
+                    passed += 1;
+                    if !options.json {
+                        println!("PASS {}", test_name);
+                    }
+                }
+                Err(e) => {
+                    failed += 1;
+                    if options.json {
+                        println!(
+                            "{{\"test\":\"{}\",\"status\":\"failed\",\"error\":\"{}\"}}",
+                            test_name,
+                            sanitize_json(&e.to_string())
+                        );
+                    } else {
+                        println!("FAIL {} - {}", test_name, e);
+                    }
+                }
+            }
+        }
+    }
+
     if total == 0 && !options.json {
-        println!("No tests defined. Add [tests.<name>] to run.toml.");
+        println!("No tests found. Add [tests.<name>] to run.toml or export test_ functions.");
     }
 
     Ok(TestReport {
@@ -296,6 +329,51 @@ fn parse_capability_string(s: &str) -> Option<crate::v2::runtime::Capability> {
         "all" => Some(Capability::Unrestricted),
         _ => None,
     }
+}
+
+/// Discover test functions by scanning component exports for names
+/// starting with `test_`.  Each discovered function becomes a zero-arg
+/// test that expects exit code 0.
+fn discover_tests(
+    config: &RunConfig,
+    project_dir: &Path,
+    engine: &mut RuntimeEngine,
+) -> Result<Vec<(String, TestCaseConfig)>> {
+    let mut discovered = Vec::new();
+
+    for (comp_name, _comp_config) in &config.components {
+        let wasm_path = match resolve_component_path(config, project_dir, comp_name) {
+            Ok(p) if p.exists() => p,
+            _ => continue,
+        };
+
+        let component_id = match engine.load_component(&wasm_path) {
+            Ok(id) => id,
+            Err(_) => continue,
+        };
+
+        // Read exports from the loaded component's WIT metadata.
+        if let Some(instance) = engine.get_loaded_component(&component_id) {
+            for export_name in &instance.exports {
+                if export_name.starts_with("test_") || export_name.starts_with("test-") {
+                    let test_name = format!("{}::{}", comp_name, export_name);
+                    discovered.push((
+                        test_name,
+                        TestCaseConfig {
+                            component: comp_name.clone(),
+                            function: export_name.clone(),
+                            args: vec![],
+                            expect: None,
+                            expect_exit: Some(0),
+                            expect_error: None,
+                        },
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(discovered)
 }
 
 fn sanitize_json(value: &str) -> String {

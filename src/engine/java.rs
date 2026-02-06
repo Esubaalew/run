@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::Builder;
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, hash_source};
 
 pub struct JavaEngine {
     compiler: Option<PathBuf>,
@@ -185,6 +185,29 @@ impl LanguageEngine for JavaEngine {
     }
 
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
+        // Check class file cache for inline/stdin payloads
+        if let Some(code) = match payload {
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            _ => None,
+        } {
+            let wrapped = wrap_inline_java(code);
+            let src_hash = hash_source(&wrapped);
+            let cache_dir = std::env::temp_dir().join("run-compile-cache").join(format!("java-{:016x}", src_hash));
+            let class_file = cache_dir.join("Main.class");
+            if class_file.exists() {
+                let start = Instant::now();
+                if let Ok(output) = self.run(&cache_dir, "Main") {
+                    return Ok(ExecutionOutcome {
+                        language: self.id().to_string(),
+                        exit_code: output.status.code(),
+                        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                        duration: start.elapsed(),
+                    });
+                }
+            }
+        }
+
         let temp_dir = Builder::new()
             .prefix("run-java")
             .tempdir()
@@ -208,6 +231,25 @@ impl LanguageEngine for JavaEngine {
                 stderr: String::from_utf8_lossy(&compile_output.stderr).into_owned(),
                 duration: start.elapsed(),
             });
+        }
+
+        // Cache compiled class files for inline/stdin
+        if let Some(code) = match payload {
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            _ => None,
+        } {
+            let wrapped = wrap_inline_java(code);
+            let src_hash = hash_source(&wrapped);
+            let cache_dir = std::env::temp_dir().join("run-compile-cache").join(format!("java-{:016x}", src_hash));
+            let _ = std::fs::create_dir_all(&cache_dir);
+            // Copy all .class files
+            if let Ok(entries) = std::fs::read_dir(dir_path) {
+                for entry in entries.flatten() {
+                    if entry.path().extension().and_then(|e| e.to_str()) == Some("class") {
+                        let _ = std::fs::copy(entry.path(), cache_dir.join(entry.file_name()));
+                    }
+                }
+            }
         }
 
         let run_output = self.run(dir_path, &class_name)?;
@@ -247,7 +289,7 @@ impl LanguageEngine for JavaEngine {
                 match reader.read_line(&mut buf) {
                     Ok(0) => break,
                     Ok(_) => {
-                        let mut lock = stderr_collector.lock().expect("stderr collector poisoned");
+                        let Ok(mut lock) = stderr_collector.lock() else { break };
                         lock.push_str(&buf);
                     }
                     Err(_) => break,
@@ -377,7 +419,9 @@ impl JavaSession {
     }
 
     fn take_stderr(&self) -> String {
-        let mut lock = self.stderr.lock().expect("stderr lock poisoned");
+        let Ok(mut lock) = self.stderr.lock() else {
+            return String::new();
+        };
         if lock.is_empty() {
             String::new()
         } else {

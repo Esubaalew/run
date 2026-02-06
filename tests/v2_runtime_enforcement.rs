@@ -17,9 +17,11 @@ mod tests {
             config.fuel_limit.is_some(),
             "Production config should have fuel limit"
         );
+        // epoch_interruption is disabled until we implement a safe
+        // background epoch-increment thread (the naïve approach deadlocks).
         assert!(
-            config.epoch_interruption,
-            "Production config should enable epoch interruption"
+            !config.epoch_interruption,
+            "Epoch interruption disabled pending safe background thread"
         );
     }
 

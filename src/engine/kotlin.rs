@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, hash_source};
 
 pub struct KotlinEngine {
     compiler: Option<PathBuf>,
@@ -124,6 +124,30 @@ impl LanguageEngine for KotlinEngine {
     }
 
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
+        // Check jar cache for inline/stdin payloads
+        if let Some(code) = match payload {
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            _ => None,
+        } {
+            let wrapped = wrap_inline_kotlin(code);
+            let src_hash = hash_source(&wrapped);
+            let cached_jar = std::env::temp_dir()
+                .join("run-compile-cache")
+                .join(format!("kotlin-{:016x}.jar", src_hash));
+            if cached_jar.exists() {
+                let start = Instant::now();
+                if let Ok(output) = self.run(&cached_jar) {
+                    return Ok(ExecutionOutcome {
+                        language: self.id().to_string(),
+                        exit_code: output.status.code(),
+                        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                        duration: start.elapsed(),
+                    });
+                }
+            }
+        }
+
         let temp_dir = Builder::new()
             .prefix("run-kotlin")
             .tempdir()
@@ -149,6 +173,19 @@ impl LanguageEngine for KotlinEngine {
                 stderr: String::from_utf8_lossy(&compile_output.stderr).into_owned(),
                 duration: start.elapsed(),
             });
+        }
+
+        // Cache the compiled jar
+        if let Some(code) = match payload {
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            _ => None,
+        } {
+            let wrapped = wrap_inline_kotlin(code);
+            let src_hash = hash_source(&wrapped);
+            let cache_dir = std::env::temp_dir().join("run-compile-cache");
+            let _ = std::fs::create_dir_all(&cache_dir);
+            let cached_jar = cache_dir.join(format!("kotlin-{:016x}.jar", src_hash));
+            let _ = std::fs::copy(&jar_path, &cached_jar);
         }
 
         let run_output = self.run(&jar_path)?;

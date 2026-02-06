@@ -63,6 +63,14 @@ impl DevServer {
             return Ok(());
         }
 
+        let addr = format!("{}:{}", self.config.host, self.config.port);
+        let listener = TcpListener::bind(&addr).map_err(|err| {
+            crate::v2::Error::other(format!("[devserver] failed to bind {}: {}", addr, err))
+        })?;
+        listener
+            .set_nonblocking(true)
+            .map_err(|err| crate::v2::Error::other(format!("[devserver] non-blocking failed: {}", err)))?;
+
         self.running.store(true, Ordering::SeqCst);
         let running = Arc::clone(&self.running);
         let config = self.config.clone();
@@ -70,20 +78,7 @@ impl DevServer {
         let last_reload = Arc::clone(&self.last_reload);
 
         let handle = thread::spawn(move || {
-            let addr = format!("{}:{}", config.host, config.port);
-            let listener = match TcpListener::bind(&addr) {
-                Ok(listener) => listener,
-                Err(err) => {
-                    eprintln!("[devserver] failed to bind {}: {}", addr, err);
-                    return;
-                }
-            };
-
-            if let Err(err) = listener.set_nonblocking(true) {
-                eprintln!("[devserver] failed to set non-blocking: {}", err);
-                return;
-            }
-
+            let listener = listener;
             while running.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((mut stream, _addr)) => {
