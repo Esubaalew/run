@@ -12,6 +12,12 @@ pub struct CrystalEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for CrystalEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CrystalEngine {
     pub fn new() -> Self {
         Self {

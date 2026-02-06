@@ -13,6 +13,12 @@ pub struct DartEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for DartEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DartEngine {
     pub fn new() -> Self {
         Self {

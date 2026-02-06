@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::io::Write;
 
 use predicates::prelude::*;
@@ -12,6 +14,7 @@ fn rust_available() -> bool {
     run::engine::RustEngine::new().validate().is_ok()
 }
 
+#[allow(dead_code)]
 fn go_available() -> bool {
     run::engine::GoEngine::new().validate().is_ok()
 }

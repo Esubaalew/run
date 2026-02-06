@@ -15,6 +15,12 @@ pub struct CppEngine {
     compiler: Option<PathBuf>,
 }
 
+impl Default for CppEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CppEngine {
     pub fn new() -> Self {
         Self {
@@ -86,8 +92,8 @@ impl CppEngine {
         let mut path = dir.join("run_cpp_binary");
         let suffix = std::env::consts::EXE_SUFFIX;
         if !suffix.is_empty() {
-            if suffix.starts_with('.') {
-                path.set_extension(&suffix[1..]);
+            if let Some(stripped) = suffix.strip_prefix('.') {
+                path.set_extension(stripped);
             } else {
                 path = PathBuf::from(format!("{}{}", path.display(), suffix));
             }

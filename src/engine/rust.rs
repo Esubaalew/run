@@ -15,6 +15,12 @@ pub struct RustEngine {
     compiler: Option<PathBuf>,
 }
 
+impl Default for RustEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RustEngine {
     pub fn new() -> Self {
         Self {
@@ -491,10 +497,10 @@ fn is_item_snippet(code: &str) -> bool {
 
     if trimmed.starts_with("pub ") {
         trimmed = trimmed[4..].trim_start();
-    } else if trimmed.starts_with("pub(") {
-        if let Some(idx) = trimmed.find(')') {
-            trimmed = trimmed[idx + 1..].trim_start();
-        }
+    } else if trimmed.starts_with("pub(")
+        && let Some(idx) = trimmed.find(')')
+    {
+        trimmed = trimmed[idx + 1..].trim_start();
     }
 
     let first_token = trimmed.split_whitespace().next().unwrap_or("");

@@ -16,6 +16,12 @@ pub struct JavascriptEngine {
     executable: PathBuf,
 }
 
+impl Default for JavascriptEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JavascriptEngine {
     pub fn new() -> Self {
         let executable = resolve_node_binary();
@@ -209,10 +215,8 @@ impl JavascriptSession {
                 break;
             }
             buffer.extend_from_slice(&byte[..read]);
-            if buffer.ends_with(PROMPT) {
-                if !buffer.ends_with(CONT_PROMPT) {
-                    break;
-                }
+            if buffer.ends_with(PROMPT) && !buffer.ends_with(CONT_PROMPT) {
+                break;
             }
         }
 

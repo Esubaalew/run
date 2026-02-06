@@ -16,6 +16,12 @@ pub struct CEngine {
     compiler: Option<PathBuf>,
 }
 
+impl Default for CEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CEngine {
     pub fn new() -> Self {
         Self {
@@ -88,8 +94,8 @@ impl CEngine {
         let mut path = dir.join("run_c_binary");
         let suffix = std::env::consts::EXE_SUFFIX;
         if !suffix.is_empty() {
-            if suffix.starts_with('.') {
-                path.set_extension(&suffix[1..]);
+            if let Some(stripped) = suffix.strip_prefix('.') {
+                path.set_extension(stripped);
             } else {
                 path = PathBuf::from(format!("{}{}", path.display(), suffix));
             }
@@ -928,7 +934,7 @@ fn is_item_snippet(code: &str) -> bool {
 
     if trimmed.ends_with(';') {
         if trimmed.contains('(') && trimmed.contains(')') {
-            let before_paren = trimmed.splitn(2, '(').next().unwrap_or_default();
+            let before_paren = trimmed.split('(').next().unwrap_or_default();
             if before_paren.split_whitespace().count() >= 2 {
                 return true;
             }
@@ -939,7 +945,7 @@ fn is_item_snippet(code: &str) -> bool {
             "auto", "register", "signed", "unsigned", "short", "long", "int", "char", "float",
             "double", "_Bool", "void",
         ];
-        if TYPE_PREFIXES.iter().any(|kw| first_token == *kw) {
+        if TYPE_PREFIXES.contains(&first_token) {
             return true;
         }
     }

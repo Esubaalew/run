@@ -16,6 +16,12 @@ pub struct JavaEngine {
     jshell: Option<PathBuf>,
 }
 
+impl Default for JavaEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JavaEngine {
     pub fn new() -> Self {
         Self {
@@ -492,11 +498,11 @@ impl LanguageSession for JavaSession {
     }
 
     fn shutdown(&mut self) -> Result<()> {
-        if !self.closed {
-            if let Some(mut stdin) = self.child.stdin.take() {
-                let _ = stdin.write_all(b"/exit\n");
-                let _ = stdin.flush();
-            }
+        if !self.closed
+            && let Some(mut stdin) = self.child.stdin.take()
+        {
+            let _ = stdin.write_all(b"/exit\n");
+            let _ = stdin.flush();
         }
         let _ = self.child.wait();
         self.closed = true;

@@ -156,7 +156,7 @@ fn csharp_repl_semantics_suite_core_cases() {
 
     let out = session.eval("null").unwrap();
     assert!(out.success(), "null failed:\n{}", out.stderr);
-    assert_contains(&out.stdout.trim(), "null", "null prints null");
+    assert_contains(out.stdout.trim(), "null", "null prints null");
 
     let out = session.eval("default(int)").unwrap();
     assert!(out.success(), "default(int) failed:\n{}", out.stderr);

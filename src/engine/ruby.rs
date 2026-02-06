@@ -14,6 +14,12 @@ pub struct RubyEngine {
     irb: Option<PathBuf>,
 }
 
+impl Default for RubyEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RubyEngine {
     pub fn new() -> Self {
         let executable = resolve_ruby_binary();

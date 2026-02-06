@@ -16,6 +16,12 @@ pub struct GoEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for GoEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GoEngine {
     pub fn new() -> Self {
         Self {
@@ -287,7 +293,7 @@ impl GoSession {
         if !self.imports.is_empty() {
             source.push_str("import (\n");
             for import in &self.imports {
-                source.push_str("\t");
+                source.push('\t');
                 source.push_str(import);
                 source.push('\n');
             }
@@ -368,7 +374,7 @@ impl GoSession {
             if !used_imports.is_empty() {
                 source.push_str("import (\n");
                 for import in &used_imports {
-                    source.push_str("\t");
+                    source.push('\t');
                     source.push_str(import);
                     source.push('\n');
                 }
@@ -706,14 +712,14 @@ fn sanitize_statement(code: &str) -> String {
                 .map(|name| name.to_string())
                 .collect();
         }
-    } else if trimmed.starts_with("var ") {
-        let rest = trimmed[4..].trim();
+    } else if let Some(stripped) = trimmed.strip_prefix("var ") {
+        let rest = stripped.trim();
         if !rest.starts_with('(') {
             let names_part = rest.split('=').next().unwrap_or(rest).trim();
             identifiers = names_part
                 .split(',')
                 .filter_map(|segment| {
-                    let token = segment.trim().split_whitespace().next().unwrap_or("");
+                    let token = segment.split_whitespace().next().unwrap_or("");
                     if token.is_empty() || token == "_" {
                         None
                     } else {
@@ -722,14 +728,14 @@ fn sanitize_statement(code: &str) -> String {
                 })
                 .collect();
         }
-    } else if trimmed.starts_with("const ") {
-        let rest = trimmed[6..].trim();
+    } else if let Some(stripped) = trimmed.strip_prefix("const ") {
+        let rest = stripped.trim();
         if !rest.starts_with('(') {
             let names_part = rest.split('=').next().unwrap_or(rest).trim();
             identifiers = names_part
                 .split(',')
                 .filter_map(|segment| {
-                    let token = segment.trim().split_whitespace().next().unwrap_or("");
+                    let token = segment.split_whitespace().next().unwrap_or("");
                     if token.is_empty() || token == "_" {
                         None
                     } else {

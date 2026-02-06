@@ -13,6 +13,12 @@ pub struct HaskellEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for HaskellEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HaskellEngine {
     pub fn new() -> Self {
         Self {
@@ -200,10 +206,10 @@ impl HaskellSession {
                 }
             }
 
-            if let Some(last) = self.state.statements.last() {
-                if last.trim().starts_with("let ") {
-                    source.push_str("    return ()\n");
-                }
+            if let Some(last) = self.state.statements.last()
+                && last.trim().starts_with("let ")
+            {
+                source.push_str("    return ()\n");
             }
         }
 

@@ -89,6 +89,7 @@ wat = "1.244.0"
 [[bench]]
 name = "run_v2"
 harness = false
+required-features = ["v2"]
 
 [build-dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

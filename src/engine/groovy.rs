@@ -14,6 +14,12 @@ pub struct GroovyEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for GroovyEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GroovyEngine {
     pub fn new() -> Self {
         let executable = resolve_groovy_binary();
