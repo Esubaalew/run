@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.5.1] - 2026-02-06
+
+### Fixed
+
+- Fix all clippy warnings across the codebase (collapsible_if, manual_strip, new_without_default, etc.)
+- Gate v2 bench and test files behind the `v2` feature flag to fix builds without it.
+
 ## [0.5.0] - 2026-02-06
 
 ### Added
@@ -123,7 +130,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/esubaalew/run/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/esubaalew/run/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/esubaalew/run/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/esubaalew/run/compare/v0.3.1...v0.3.2
