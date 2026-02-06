@@ -39,12 +39,10 @@ fn main() {
     if let Ok(rustc_version) = Command::new(env::var("RUSTC").unwrap_or_else(|_| "rustc".into()))
         .arg("--version")
         .output()
+        && rustc_version.status.success()
+        && let Ok(text) = String::from_utf8(rustc_version.stdout)
     {
-        if rustc_version.status.success() {
-            if let Ok(text) = String::from_utf8(rustc_version.stdout) {
-                println!("cargo:rustc-env=RUN_RUSTC_VERSION={}", text.trim());
-            }
-        }
+        println!("cargo:rustc-env=RUN_RUSTC_VERSION={}", text.trim());
     }
 }
 

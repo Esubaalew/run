@@ -236,6 +236,6 @@ mod tests {
 mod basic_tests {
     #[test]
     fn test_placeholder() {
-        assert!(true);
+        // Placeholder so the test binary compiles without v2 feature
     }
 }

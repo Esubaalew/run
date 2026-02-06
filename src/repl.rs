@@ -813,10 +813,10 @@ fn needs_more_input_python(code: &str) -> bool {
     }
 
     // If the last line is still indented, we're still inside the block
-    if let Some(last) = last_nonempty {
-        if last.starts_with(' ') || last.starts_with('\t') {
-            return true;
-        }
+    if let Some(last) = last_nonempty
+        && (last.starts_with(' ') || last.starts_with('\t'))
+    {
+        return true;
     }
 
     false
@@ -1205,19 +1205,18 @@ impl ReplState {
     }
 
     fn execute_snippet(&mut self, code: &str) -> Result<()> {
-        if self.detect_enabled {
-            if let Some(detected) = crate::detect::detect_language_from_snippet(code) {
-                if detected != self.current_language.canonical_id() {
-                    let spec = LanguageSpec::new(detected.to_string());
-                    if self.registry.resolve(&spec).is_some() {
-                        println!(
-                            "[auto-detect] switching {} -> {}",
-                            self.current_language.canonical_id(),
-                            spec.canonical_id()
-                        );
-                        self.current_language = spec;
-                    }
-                }
+        if self.detect_enabled
+            && let Some(detected) = crate::detect::detect_language_from_snippet(code)
+            && detected != self.current_language.canonical_id()
+        {
+            let spec = LanguageSpec::new(detected.to_string());
+            if self.registry.resolve(&spec).is_some() {
+                println!(
+                    "[auto-detect] switching {} -> {}",
+                    self.current_language.canonical_id(),
+                    spec.canonical_id()
+                );
+                self.current_language = spec;
             }
         }
 
@@ -1377,7 +1376,7 @@ impl ReplState {
         let avg = total / times.len() as f64;
         let min = times.first().copied().unwrap_or(0.0);
         let max = times.last().copied().unwrap_or(0.0);
-        let median = if times.len() % 2 == 0 && times.len() >= 2 {
+        let median = if times.len().is_multiple_of(2) && times.len() >= 2 {
             (times[times.len() / 2 - 1] + times[times.len() / 2]) / 2.0
         } else {
             times[times.len() / 2]
@@ -1477,11 +1476,11 @@ fn render_outcome(outcome: &ExecutionOutcome) {
     }
 
     let millis = outcome.duration.as_millis();
-    if let Some(code) = outcome.exit_code {
-        if code != 0 {
-            println!("\x1b[2m[exit {code}] {}\x1b[0m", format_duration(millis));
-            return;
-        }
+    if let Some(code) = outcome.exit_code
+        && code != 0
+    {
+        println!("\x1b[2m[exit {code}] {}\x1b[0m", format_duration(millis));
+        return;
     }
 
     // Show execution timing
@@ -1545,7 +1544,7 @@ fn extract_defined_names(code: &str, language_id: &str) -> Vec<String> {
                         let name = if let Some(alias) = part.split(" as ").nth(1) {
                             alias.trim()
                         } else {
-                            part.trim().split('.').last().unwrap_or("")
+                            part.trim().split('.').next_back().unwrap_or("")
                         };
                         if !name.is_empty() {
                             names.push(name.to_string());
@@ -1633,10 +1632,9 @@ fn extract_defined_names(code: &str, language_id: &str) -> Vec<String> {
                         && lhs
                             .chars()
                             .all(|c| c.is_alphanumeric() || c == '_' || c == ' ')
+                        && let Some(name) = lhs.split_whitespace().last()
                     {
-                        if let Some(name) = lhs.split_whitespace().last() {
-                            names.push(name.to_string());
-                        }
+                        names.push(name.to_string());
                     }
                 }
             }

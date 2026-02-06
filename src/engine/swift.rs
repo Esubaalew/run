@@ -13,6 +13,12 @@ pub struct SwiftEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for SwiftEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SwiftEngine {
     pub fn new() -> Self {
         Self {

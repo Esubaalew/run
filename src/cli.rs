@@ -90,13 +90,12 @@ pub fn parse() -> Result<Command> {
         .as_ref()
         .map(|value| LanguageSpec::new(value.to_string()));
 
-    if language.is_none() {
-        if let Some(candidate) = trailing.first() {
-            if crate::language::is_language_token(candidate) {
-                let raw = trailing.remove(0);
-                language = Some(LanguageSpec::new(raw));
-            }
-        }
+    if language.is_none()
+        && let Some(candidate) = trailing.first()
+        && crate::language::is_language_token(candidate)
+    {
+        let raw = trailing.remove(0);
+        language = Some(LanguageSpec::new(raw));
     }
 
     let mut source: Option<InputSource> = None;
@@ -113,14 +112,14 @@ pub fn parse() -> Result<Command> {
         source = Some(InputSource::Inline(code));
     }
 
-    if source.is_none() {
-        if let Some(path) = cli.file {
-            ensure!(
-                trailing.is_empty(),
-                "Unexpected positional arguments when --file is present"
-            );
-            source = Some(InputSource::File(path));
-        }
+    if source.is_none()
+        && let Some(path) = cli.file
+    {
+        ensure!(
+            trailing.is_empty(),
+            "Unexpected positional arguments when --file is present"
+        );
+        source = Some(InputSource::File(path));
     }
 
     if source.is_none() && !trailing.is_empty() {

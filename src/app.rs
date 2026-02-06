@@ -116,7 +116,7 @@ fn execute_once(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32>
     }
 
     // Show timing on stderr if RUN_TIMING=1 or if execution was slow (>1s)
-    let show_timing = std::env::var("RUN_TIMING").map_or(false, |v| v == "1" || v == "true");
+    let show_timing = std::env::var("RUN_TIMING").is_ok_and(|v| v == "1" || v == "true");
     if show_timing || outcome.duration.as_millis() > 1000 {
         eprintln!(
             "\x1b[2m[{} {}ms]\x1b[0m",
@@ -215,7 +215,7 @@ fn bench_run(spec: ExecutionSpec, registry: &LanguageRegistry, iterations: u32) 
     let avg = total / times.len() as f64;
     let min = times.first().copied().unwrap_or(0.0);
     let max = times.last().copied().unwrap_or(0.0);
-    let median = if times.len() % 2 == 0 && times.len() >= 2 {
+    let median = if times.len().is_multiple_of(2) && times.len() >= 2 {
         (times[times.len() / 2 - 1] + times[times.len() / 2]) / 2.0
     } else {
         times[times.len() / 2]
@@ -342,12 +342,11 @@ fn resolve_language(
         return Ok(spec);
     }
 
-    if allow_detect {
-        if let Some(payload) = payload {
-            if let Some(detected) = detect_language_for_source(payload, registry) {
-                return Ok(detected);
-            }
-        }
+    if allow_detect
+        && let Some(payload) = payload
+        && let Some(detected) = detect_language_for_source(payload, registry)
+    {
+        return Ok(detected);
     }
 
     let default = LanguageSpec::new(default_language());

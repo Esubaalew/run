@@ -396,7 +396,7 @@ impl LanguageRegistry {
             .alias_lookup
             .get(&canonical)
             .cloned()
-            .unwrap_or_else(|| canonical);
+            .unwrap_or(canonical);
         self.engines
             .get(&target_id)
             .map(|engine| engine.as_ref() as _)
@@ -408,7 +408,7 @@ impl LanguageRegistry {
             .alias_lookup
             .get(&canonical)
             .cloned()
-            .unwrap_or_else(|| canonical);
+            .unwrap_or(canonical);
         self.engines
             .get(&target_id)
             .map(|engine| engine.as_ref() as _)
@@ -509,24 +509,24 @@ pub fn detect_language_for_source(
     source: &ExecutionPayload,
     registry: &LanguageRegistry,
 ) -> Option<LanguageSpec> {
-    if let Some(path) = source.as_file_path() {
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            let ext_lower = ext.to_ascii_lowercase();
-            if let Some(lang) = extension_to_language(&ext_lower) {
-                let spec = LanguageSpec::new(lang);
-                if registry.resolve(&spec).is_some() {
-                    return Some(spec);
-                }
-            }
-        }
-    }
-
-    if let Some(code) = source.as_inline() {
-        if let Some(lang) = crate::detect::detect_language_from_snippet(code) {
+    if let Some(path) = source.as_file_path()
+        && let Some(ext) = path.extension().and_then(|e| e.to_str())
+    {
+        let ext_lower = ext.to_ascii_lowercase();
+        if let Some(lang) = extension_to_language(&ext_lower) {
             let spec = LanguageSpec::new(lang);
             if registry.resolve(&spec).is_some() {
                 return Some(spec);
             }
+        }
+    }
+
+    if let Some(code) = source.as_inline()
+        && let Some(lang) = crate::detect::detect_language_from_snippet(code)
+    {
+        let spec = LanguageSpec::new(lang);
+        if registry.resolve(&spec).is_some() {
+            return Some(spec);
         }
     }
 

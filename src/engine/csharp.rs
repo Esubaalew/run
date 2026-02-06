@@ -13,6 +13,12 @@ pub struct CSharpEngine {
     target_framework: Option<String>,
 }
 
+impl Default for CSharpEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CSharpEngine {
     pub fn new() -> Self {
         let runtime = resolve_dotnet_runtime();

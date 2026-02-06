@@ -137,6 +137,7 @@ fn nim_available() -> bool {
     run::engine::NimEngine::new().validate().is_ok()
 }
 
+#[allow(deprecated)]
 fn run_binary() -> assert_cmd::Command {
     assert_cmd::Command::cargo_bin("run").expect("binary built")
 }

@@ -13,6 +13,12 @@ pub struct NimEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for NimEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NimEngine {
     pub fn new() -> Self {
         Self {
@@ -433,7 +439,7 @@ fn collect_declared_identifiers(code: &str) -> Vec<String> {
             if name
                 .chars()
                 .next()
-                .map_or(true, |ch| !is_nim_identifier_start(ch))
+                .is_none_or(|ch| !is_nim_identifier_start(ch))
             {
                 continue;
             }
@@ -474,7 +480,7 @@ fn filter_nim_stderr(stderr: &str) -> String {
                 return false;
             }
             if (trimmed.starts_with("Hint: ")
-                || trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()))
+                || trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()))
                 && (trimmed.contains(" lines;")
                     || trimmed.contains(" proj:")
                     || trimmed.contains(" out:")

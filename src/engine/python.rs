@@ -16,6 +16,12 @@ pub struct PythonEngine {
     executable: PathBuf,
 }
 
+impl Default for PythonEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PythonEngine {
     pub fn new() -> Self {
         let executable = resolve_python_binary();

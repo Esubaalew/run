@@ -15,6 +15,12 @@ pub struct ZigEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for ZigEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ZigEngine {
     pub fn new() -> Self {
         Self {
@@ -152,24 +158,25 @@ impl LanguageEngine for ZigEngine {
                 .stderr(Stdio::piped())
                 .current_dir(dir);
 
-            if let Ok(build_output) = build_cmd.output() {
-                if build_output.status.success() && bin_path.exists() {
-                    cache_store(h, &bin_path);
-                    let mut run_cmd = Command::new(&bin_path);
-                    run_cmd
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped())
-                        .stdin(Stdio::inherit());
-                    if let Ok(output) = run_cmd.output() {
-                        drop(temp_dir);
-                        return Ok(ExecutionOutcome {
-                            language: self.id().to_string(),
-                            exit_code: output.status.code(),
-                            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                            duration: start.elapsed(),
-                        });
-                    }
+            if let Ok(build_output) = build_cmd.output()
+                && build_output.status.success()
+                && bin_path.exists()
+            {
+                cache_store(h, &bin_path);
+                let mut run_cmd = Command::new(&bin_path);
+                run_cmd
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .stdin(Stdio::inherit());
+                if let Ok(output) = run_cmd.output() {
+                    drop(temp_dir);
+                    return Ok(ExecutionOutcome {
+                        language: self.id().to_string(),
+                        exit_code: output.status.code(),
+                        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                        duration: start.elapsed(),
+                    });
                 }
             }
         }
@@ -641,17 +648,17 @@ fn rewrite_numeric_suffixes(code: &str) -> String {
 
             let literal_end = scan_numeric_literal(bytes, i);
             if literal_end > i {
-                if let Some((suffix, suffix_len)) = match_suffix(&code[literal_end..]) {
-                    if !is_identifier_char(bytes, literal_end + suffix_len) {
-                        let literal = &code[i..literal_end];
-                        result.push_str("@as(");
-                        result.push_str(suffix);
-                        result.push_str(", ");
-                        result.push_str(literal);
-                        result.push_str(")");
-                        i = literal_end + suffix_len;
-                        continue;
-                    }
+                if let Some((suffix, suffix_len)) = match_suffix(&code[literal_end..])
+                    && !is_identifier_char(bytes, literal_end + suffix_len)
+                {
+                    let literal = &code[i..literal_end];
+                    result.push_str("@as(");
+                    result.push_str(suffix);
+                    result.push_str(", ");
+                    result.push_str(literal);
+                    result.push(')');
+                    i = literal_end + suffix_len;
+                    continue;
                 }
 
                 result.push_str(&code[i..literal_end]);

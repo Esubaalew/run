@@ -13,6 +13,12 @@ pub struct JuliaEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for JuliaEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JuliaEngine {
     pub fn new() -> Self {
         Self {

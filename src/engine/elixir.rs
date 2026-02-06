@@ -13,6 +13,12 @@ pub struct ElixirEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for ElixirEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ElixirEngine {
     pub fn new() -> Self {
         Self {

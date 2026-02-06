@@ -13,6 +13,12 @@ pub struct BashEngine {
     executable: PathBuf,
 }
 
+impl Default for BashEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BashEngine {
     pub fn new() -> Self {
         let executable = resolve_bash_binary();

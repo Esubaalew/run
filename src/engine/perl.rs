@@ -13,6 +13,12 @@ pub struct PerlEngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for PerlEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PerlEngine {
     pub fn new() -> Self {
         Self {

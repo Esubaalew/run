@@ -12,6 +12,12 @@ pub struct LuaEngine {
     interpreter: Option<PathBuf>,
 }
 
+impl Default for LuaEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LuaEngine {
     pub fn new() -> Self {
         Self {
@@ -309,8 +315,8 @@ impl LanguageSession for LuaSession {
             });
         }
 
-        let (effective_code, force_expression) = if trimmed.starts_with('=') {
-            (trimmed[1..].trim(), true)
+        let (effective_code, force_expression) = if let Some(stripped) = trimmed.strip_prefix('=') {
+            (stripped.trim(), true)
         } else {
             (trimmed, false)
         };
@@ -319,7 +325,7 @@ impl LanguageSession for LuaSession {
         let statement = if is_expression {
             wrap_expression_snippet(effective_code)
         } else {
-            format!("{}\n", code.trim_end_matches(|c| c == '\r' || c == '\n'))
+            format!("{}\n", code.trim_end_matches(['\r', '\n']))
         };
 
         let previous_stdout = self.last_stdout.clone();

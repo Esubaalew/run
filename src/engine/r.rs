@@ -12,6 +12,12 @@ pub struct REngine {
     executable: Option<PathBuf>,
 }
 
+impl Default for REngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl REngine {
     pub fn new() -> Self {
         Self {

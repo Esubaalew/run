@@ -13,6 +13,12 @@ pub struct TypeScriptEngine {
     executable: PathBuf,
 }
 
+impl Default for TypeScriptEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TypeScriptEngine {
     pub fn new() -> Self {
         let executable = resolve_deno_binary();

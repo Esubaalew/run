@@ -13,6 +13,12 @@ pub struct KotlinEngine {
     java: Option<PathBuf>,
 }
 
+impl Default for KotlinEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KotlinEngine {
     pub fn new() -> Self {
         Self {

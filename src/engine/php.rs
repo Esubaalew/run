@@ -12,6 +12,12 @@ pub struct PhpEngine {
     interpreter: Option<PathBuf>,
 }
 
+impl Default for PhpEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PhpEngine {
     pub fn new() -> Self {
         Self {
@@ -309,8 +315,8 @@ fn strip_leading_php_prompt(line: &str) -> String {
     }
     let (leading_ws, rest) = without_bom.split_at(leading_len);
     for prefix in PHP_PROMPT_PREFIXES {
-        if rest.starts_with(prefix) {
-            return format!("{}{}", leading_ws, &rest[prefix.len()..]);
+        if let Some(stripped) = rest.strip_prefix(prefix) {
+            return format!("{}{}", leading_ws, stripped);
         }
     }
     without_bom.to_string()
