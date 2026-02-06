@@ -187,12 +187,16 @@ impl LanguageEngine for JavaEngine {
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Check class file cache for inline/stdin payloads
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+                Some(code.as_str())
+            }
             _ => None,
         } {
             let wrapped = wrap_inline_java(code);
             let src_hash = hash_source(&wrapped);
-            let cache_dir = std::env::temp_dir().join("run-compile-cache").join(format!("java-{:016x}", src_hash));
+            let cache_dir = std::env::temp_dir()
+                .join("run-compile-cache")
+                .join(format!("java-{:016x}", src_hash));
             let class_file = cache_dir.join("Main.class");
             if class_file.exists() {
                 let start = Instant::now();
@@ -235,12 +239,16 @@ impl LanguageEngine for JavaEngine {
 
         // Cache compiled class files for inline/stdin
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+                Some(code.as_str())
+            }
             _ => None,
         } {
             let wrapped = wrap_inline_java(code);
             let src_hash = hash_source(&wrapped);
-            let cache_dir = std::env::temp_dir().join("run-compile-cache").join(format!("java-{:016x}", src_hash));
+            let cache_dir = std::env::temp_dir()
+                .join("run-compile-cache")
+                .join(format!("java-{:016x}", src_hash));
             let _ = std::fs::create_dir_all(&cache_dir);
             // Copy all .class files
             if let Ok(entries) = std::fs::read_dir(dir_path) {
@@ -289,7 +297,9 @@ impl LanguageEngine for JavaEngine {
                 match reader.read_line(&mut buf) {
                     Ok(0) => break,
                     Ok(_) => {
-                        let Ok(mut lock) = stderr_collector.lock() else { break };
+                        let Ok(mut lock) = stderr_collector.lock() else {
+                            break;
+                        };
                         lock.push_str(&buf);
                     }
                     Err(_) => break,

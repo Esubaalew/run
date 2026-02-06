@@ -8,8 +8,8 @@ use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
 use super::{
-    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession,
-    cache_store, hash_source, try_cached_execution,
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store, hash_source,
+    try_cached_execution,
 };
 
 pub struct CEngine {
@@ -131,7 +131,9 @@ impl LanguageEngine for CEngine {
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Try cache for inline/stdin payloads
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+                Some(code.as_str())
+            }
             _ => None,
         } {
             let prepared = prepare_inline_source(code);

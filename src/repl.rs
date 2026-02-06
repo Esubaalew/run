@@ -12,8 +12,8 @@ use rustyline::validate::Validator;
 use rustyline::{Editor, Helper};
 
 use crate::engine::{
-    ExecutionOutcome, ExecutionPayload, LanguageRegistry, LanguageSession,
-    build_install_command, package_install_command,
+    ExecutionOutcome, ExecutionPayload, LanguageRegistry, LanguageSession, build_install_command,
+    package_install_command,
 };
 use crate::highlight;
 use crate::language::LanguageSpec;
@@ -43,70 +43,397 @@ impl ReplHelper {
 }
 
 const META_COMMANDS: &[&str] = &[
-    ":help", ":exit", ":quit", ":languages", ":lang ", ":detect ", ":reset",
-    ":load ", ":run ", ":save ", ":history", ":install ", ":bench ", ":type",
+    ":help",
+    ":exit",
+    ":quit",
+    ":languages",
+    ":lang ",
+    ":detect ",
+    ":reset",
+    ":load ",
+    ":run ",
+    ":save ",
+    ":history",
+    ":install ",
+    ":bench ",
+    ":type",
 ];
 
 fn language_keywords(lang: &str) -> &'static [&'static str] {
     match lang {
         "python" | "py" | "python3" | "py3" => &[
-            "False", "None", "True", "and", "as", "assert", "async", "await", "break",
-            "class", "continue", "def", "del", "elif", "else", "except", "finally",
-            "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal",
-            "not", "or", "pass", "raise", "return", "try", "while", "with", "yield",
-            "print", "len", "range", "enumerate", "zip", "map", "filter", "sorted",
-            "list", "dict", "set", "tuple", "str", "int", "float", "bool", "type",
-            "isinstance", "hasattr", "getattr", "setattr", "open", "input",
+            "False",
+            "None",
+            "True",
+            "and",
+            "as",
+            "assert",
+            "async",
+            "await",
+            "break",
+            "class",
+            "continue",
+            "def",
+            "del",
+            "elif",
+            "else",
+            "except",
+            "finally",
+            "for",
+            "from",
+            "global",
+            "if",
+            "import",
+            "in",
+            "is",
+            "lambda",
+            "nonlocal",
+            "not",
+            "or",
+            "pass",
+            "raise",
+            "return",
+            "try",
+            "while",
+            "with",
+            "yield",
+            "print",
+            "len",
+            "range",
+            "enumerate",
+            "zip",
+            "map",
+            "filter",
+            "sorted",
+            "list",
+            "dict",
+            "set",
+            "tuple",
+            "str",
+            "int",
+            "float",
+            "bool",
+            "type",
+            "isinstance",
+            "hasattr",
+            "getattr",
+            "setattr",
+            "open",
+            "input",
         ],
         "javascript" | "js" | "node" => &[
-            "async", "await", "break", "case", "catch", "class", "const", "continue",
-            "debugger", "default", "delete", "do", "else", "export", "extends", "false",
-            "finally", "for", "function", "if", "import", "in", "instanceof", "let",
-            "new", "null", "of", "return", "static", "super", "switch", "this", "throw",
-            "true", "try", "typeof", "undefined", "var", "void", "while", "with", "yield",
-            "console", "require", "module", "process", "Promise", "Array", "Object",
-            "String", "Number", "Boolean", "Math", "JSON", "Date", "RegExp", "Map", "Set",
+            "async",
+            "await",
+            "break",
+            "case",
+            "catch",
+            "class",
+            "const",
+            "continue",
+            "debugger",
+            "default",
+            "delete",
+            "do",
+            "else",
+            "export",
+            "extends",
+            "false",
+            "finally",
+            "for",
+            "function",
+            "if",
+            "import",
+            "in",
+            "instanceof",
+            "let",
+            "new",
+            "null",
+            "of",
+            "return",
+            "static",
+            "super",
+            "switch",
+            "this",
+            "throw",
+            "true",
+            "try",
+            "typeof",
+            "undefined",
+            "var",
+            "void",
+            "while",
+            "with",
+            "yield",
+            "console",
+            "require",
+            "module",
+            "process",
+            "Promise",
+            "Array",
+            "Object",
+            "String",
+            "Number",
+            "Boolean",
+            "Math",
+            "JSON",
+            "Date",
+            "RegExp",
+            "Map",
+            "Set",
         ],
         "typescript" | "ts" => &[
-            "abstract", "any", "as", "async", "await", "boolean", "break", "case", "catch",
-            "class", "const", "continue", "debugger", "declare", "default", "delete", "do",
-            "else", "enum", "export", "extends", "false", "finally", "for", "from",
-            "function", "get", "if", "implements", "import", "in", "infer", "instanceof",
-            "interface", "is", "keyof", "let", "module", "namespace", "never", "new",
-            "null", "number", "object", "of", "private", "protected", "public", "readonly",
-            "return", "set", "static", "string", "super", "switch", "symbol", "this",
-            "throw", "true", "try", "type", "typeof", "undefined", "unique", "unknown",
-            "var", "void", "while", "with", "yield",
+            "abstract",
+            "any",
+            "as",
+            "async",
+            "await",
+            "boolean",
+            "break",
+            "case",
+            "catch",
+            "class",
+            "const",
+            "continue",
+            "debugger",
+            "declare",
+            "default",
+            "delete",
+            "do",
+            "else",
+            "enum",
+            "export",
+            "extends",
+            "false",
+            "finally",
+            "for",
+            "from",
+            "function",
+            "get",
+            "if",
+            "implements",
+            "import",
+            "in",
+            "infer",
+            "instanceof",
+            "interface",
+            "is",
+            "keyof",
+            "let",
+            "module",
+            "namespace",
+            "never",
+            "new",
+            "null",
+            "number",
+            "object",
+            "of",
+            "private",
+            "protected",
+            "public",
+            "readonly",
+            "return",
+            "set",
+            "static",
+            "string",
+            "super",
+            "switch",
+            "symbol",
+            "this",
+            "throw",
+            "true",
+            "try",
+            "type",
+            "typeof",
+            "undefined",
+            "unique",
+            "unknown",
+            "var",
+            "void",
+            "while",
+            "with",
+            "yield",
         ],
         "rust" | "rs" => &[
-            "as", "async", "await", "break", "const", "continue", "crate", "dyn",
-            "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
-            "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
-            "self", "Self", "static", "struct", "super", "trait", "true", "type",
-            "unsafe", "use", "where", "while", "println!", "eprintln!", "format!",
-            "vec!", "String", "Vec", "Option", "Result", "Some", "None", "Ok", "Err",
+            "as",
+            "async",
+            "await",
+            "break",
+            "const",
+            "continue",
+            "crate",
+            "dyn",
+            "else",
+            "enum",
+            "extern",
+            "false",
+            "fn",
+            "for",
+            "if",
+            "impl",
+            "in",
+            "let",
+            "loop",
+            "match",
+            "mod",
+            "move",
+            "mut",
+            "pub",
+            "ref",
+            "return",
+            "self",
+            "Self",
+            "static",
+            "struct",
+            "super",
+            "trait",
+            "true",
+            "type",
+            "unsafe",
+            "use",
+            "where",
+            "while",
+            "println!",
+            "eprintln!",
+            "format!",
+            "vec!",
+            "String",
+            "Vec",
+            "Option",
+            "Result",
+            "Some",
+            "None",
+            "Ok",
+            "Err",
         ],
         "go" | "golang" => &[
-            "break", "case", "chan", "const", "continue", "default", "defer", "else",
-            "fallthrough", "for", "func", "go", "goto", "if", "import", "interface",
-            "map", "package", "range", "return", "select", "struct", "switch", "type",
-            "var", "fmt", "Println", "Printf", "Sprintf", "errors", "strings", "strconv",
+            "break",
+            "case",
+            "chan",
+            "const",
+            "continue",
+            "default",
+            "defer",
+            "else",
+            "fallthrough",
+            "for",
+            "func",
+            "go",
+            "goto",
+            "if",
+            "import",
+            "interface",
+            "map",
+            "package",
+            "range",
+            "return",
+            "select",
+            "struct",
+            "switch",
+            "type",
+            "var",
+            "fmt",
+            "Println",
+            "Printf",
+            "Sprintf",
+            "errors",
+            "strings",
+            "strconv",
         ],
         "ruby" | "rb" => &[
-            "alias", "and", "begin", "break", "case", "class", "def", "defined?",
-            "do", "else", "elsif", "end", "ensure", "false", "for", "if", "in",
-            "module", "next", "nil", "not", "or", "redo", "rescue", "retry",
-            "return", "self", "super", "then", "true", "undef", "unless", "until",
-            "when", "while", "yield", "puts", "print", "require", "require_relative",
+            "alias",
+            "and",
+            "begin",
+            "break",
+            "case",
+            "class",
+            "def",
+            "defined?",
+            "do",
+            "else",
+            "elsif",
+            "end",
+            "ensure",
+            "false",
+            "for",
+            "if",
+            "in",
+            "module",
+            "next",
+            "nil",
+            "not",
+            "or",
+            "redo",
+            "rescue",
+            "retry",
+            "return",
+            "self",
+            "super",
+            "then",
+            "true",
+            "undef",
+            "unless",
+            "until",
+            "when",
+            "while",
+            "yield",
+            "puts",
+            "print",
+            "require",
+            "require_relative",
         ],
         "java" => &[
-            "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char",
-            "class", "const", "continue", "default", "do", "double", "else", "enum",
-            "extends", "final", "finally", "float", "for", "goto", "if", "implements",
-            "import", "instanceof", "int", "interface", "long", "native", "new",
-            "package", "private", "protected", "public", "return", "short", "static",
-            "strictfp", "super", "switch", "synchronized", "this", "throw", "throws",
-            "transient", "try", "void", "volatile", "while", "System", "String",
+            "abstract",
+            "assert",
+            "boolean",
+            "break",
+            "byte",
+            "case",
+            "catch",
+            "char",
+            "class",
+            "const",
+            "continue",
+            "default",
+            "do",
+            "double",
+            "else",
+            "enum",
+            "extends",
+            "final",
+            "finally",
+            "float",
+            "for",
+            "goto",
+            "if",
+            "implements",
+            "import",
+            "instanceof",
+            "int",
+            "interface",
+            "long",
+            "native",
+            "new",
+            "package",
+            "private",
+            "protected",
+            "public",
+            "return",
+            "short",
+            "static",
+            "strictfp",
+            "super",
+            "switch",
+            "synchronized",
+            "this",
+            "throw",
+            "throws",
+            "transient",
+            "try",
+            "void",
+            "volatile",
+            "while",
+            "System",
+            "String",
         ],
         _ => &[],
     }
@@ -503,8 +830,20 @@ fn is_python_block_header(line: &str) -> bool {
     }
     let lowered = line.to_ascii_lowercase();
     const BLOCK_KEYWORDS: &[&str] = &[
-        "def ", "class ", "if ", "elif ", "else:", "for ", "while ", "try:", "except",
-        "finally:", "with ", "async def ", "async for ", "async with ",
+        "def ",
+        "class ",
+        "if ",
+        "elif ",
+        "else:",
+        "for ",
+        "while ",
+        "try:",
+        "except",
+        "finally:",
+        "with ",
+        "async def ",
+        "async for ",
+        "async with ",
     ];
     BLOCK_KEYWORDS.iter().any(|kw| lowered.starts_with(kw))
 }
@@ -780,7 +1119,10 @@ impl ReplState {
                 if let Some(token) = parts.next() {
                     let path = Path::new(token);
                     match self.save_session(path) {
-                        Ok(count) => println!("\x1b[2m[saved {count} entries to {}]\x1b[0m", path.display()),
+                        Ok(count) => println!(
+                            "\x1b[2m[saved {count} entries to {}]\x1b[0m",
+                            path.display()
+                        ),
                         Err(e) => println!("error saving session: {e}"),
                     }
                 } else {
@@ -789,10 +1131,7 @@ impl ReplState {
                 return Ok(false);
             }
             "history" => {
-                let limit: usize = parts
-                    .next()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(25);
+                let limit: usize = parts.next().and_then(|s| s.parse().ok()).unwrap_or(25);
                 self.show_history(limit);
                 return Ok(false);
             }
@@ -915,9 +1254,8 @@ impl ReplState {
             ExecutionPayload::File { ref path } => {
                 // Read the file and feed it through the session so variables persist
                 if self.engine_supports_sessions(&language)? {
-                    let code = std::fs::read_to_string(path).with_context(|| {
-                        format!("failed to read file: {}", path.display())
-                    })?;
+                    let code = std::fs::read_to_string(path)
+                        .with_context(|| format!("failed to read file: {}", path.display()))?;
                     println!("\x1b[2m[loaded {}]\x1b[0m", path.display());
                     self.eval_in_session(&language, &code)?
                 } else {
@@ -1022,10 +1360,7 @@ impl ReplState {
             }
             return Ok(());
         }
-        println!(
-            "\x1b[2m  warmup: {}ms\x1b[0m",
-            warmup.duration.as_millis()
-        );
+        println!("\x1b[2m  warmup: {}ms\x1b[0m", warmup.duration.as_millis());
 
         let mut times: Vec<f64> = Vec::with_capacity(iterations as usize);
         for i in 0..iterations {
@@ -1097,14 +1432,28 @@ impl ReplState {
         println!("  \x1b[36m:help\x1b[0m                 \x1b[2mShow this help\x1b[0m");
         println!("  \x1b[36m:lang\x1b[0m <id>            \x1b[2mSwitch language\x1b[0m");
         println!("  \x1b[36m:languages\x1b[0m            \x1b[2mList available languages\x1b[0m");
-        println!("  \x1b[36m:detect\x1b[0m on|off        \x1b[2mToggle auto language detection\x1b[0m");
-        println!("  \x1b[36m:reset\x1b[0m                \x1b[2mClear current session state\x1b[0m");
+        println!(
+            "  \x1b[36m:detect\x1b[0m on|off        \x1b[2mToggle auto language detection\x1b[0m"
+        );
+        println!(
+            "  \x1b[36m:reset\x1b[0m                \x1b[2mClear current session state\x1b[0m"
+        );
         println!("  \x1b[36m:load\x1b[0m <path>          \x1b[2mLoad and execute a file\x1b[0m");
-        println!("  \x1b[36m:save\x1b[0m <path>          \x1b[2mSave session history to file\x1b[0m");
-        println!("  \x1b[36m:history\x1b[0m [n]          \x1b[2mShow last n entries (default: 25)\x1b[0m");
-        println!("  \x1b[36m:install\x1b[0m <pkg>        \x1b[2mInstall a package for current language\x1b[0m");
-        println!("  \x1b[36m:bench\x1b[0m [N] <code>     \x1b[2mBenchmark code N times (default: 10)\x1b[0m");
-        println!("  \x1b[36m:type\x1b[0m                 \x1b[2mShow current language and session status\x1b[0m");
+        println!(
+            "  \x1b[36m:save\x1b[0m <path>          \x1b[2mSave session history to file\x1b[0m"
+        );
+        println!(
+            "  \x1b[36m:history\x1b[0m [n]          \x1b[2mShow last n entries (default: 25)\x1b[0m"
+        );
+        println!(
+            "  \x1b[36m:install\x1b[0m <pkg>        \x1b[2mInstall a package for current language\x1b[0m"
+        );
+        println!(
+            "  \x1b[36m:bench\x1b[0m [N] <code>     \x1b[2mBenchmark code N times (default: 10)\x1b[0m"
+        );
+        println!(
+            "  \x1b[36m:type\x1b[0m                 \x1b[2mShow current language and session status\x1b[0m"
+        );
         println!("  \x1b[36m:exit\x1b[0m                 \x1b[2mLeave the REPL\x1b[0m");
         println!("\x1b[2mLanguage shortcuts: :py, :js, :rs, :go, :cpp, :java, ...\x1b[0m");
     }
@@ -1121,7 +1470,10 @@ fn render_outcome(outcome: &ExecutionOutcome) {
         print!("{}", ensure_trailing_newline(&outcome.stdout));
     }
     if !outcome.stderr.is_empty() {
-        eprint!("\x1b[31m{}\x1b[0m", ensure_trailing_newline(&outcome.stderr));
+        eprint!(
+            "\x1b[31m{}\x1b[0m",
+            ensure_trailing_newline(&outcome.stderr)
+        );
     }
 
     let millis = outcome.duration.as_millis();
@@ -1278,7 +1630,9 @@ fn extract_defined_names(code: &str, language_id: &str) -> Vec<String> {
                     let lhs = trimmed[..eq_pos].trim();
                     if !lhs.is_empty()
                         && !trimmed[eq_pos..].starts_with("==")
-                        && lhs.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ' ')
+                        && lhs
+                            .chars()
+                            .all(|c| c.is_alphanumeric() || c == '_' || c == ' ')
                     {
                         if let Some(name) = lhs.split_whitespace().last() {
                             names.push(name.to_string());
@@ -1359,7 +1713,10 @@ mod tests {
     fn python_dict_literal_colon_does_not_trigger_block() {
         let mut p = PendingInput::new();
         p.push_line("x = {'key': 'value'}");
-        assert!(!p.needs_more_input("python"), "dict literal should not trigger multi-line");
+        assert!(
+            !p.needs_more_input("python"),
+            "dict literal should not trigger multi-line"
+        );
     }
 
     #[test]

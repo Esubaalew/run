@@ -244,7 +244,9 @@ impl ComponentValue {
             ComponentValue::F32(v) => Number::from_f64(*v as f64)
                 .map(Value::Number)
                 .unwrap_or(Value::Null),
-            ComponentValue::F64(v) => Number::from_f64(*v).map(Value::Number).unwrap_or(Value::Null),
+            ComponentValue::F64(v) => Number::from_f64(*v)
+                .map(Value::Number)
+                .unwrap_or(Value::Null),
             ComponentValue::Char(c) => Value::String(c.to_string()),
             ComponentValue::String(s) => Value::String(s.clone()),
             ComponentValue::List(items) => {
@@ -265,22 +267,30 @@ impl ComponentValue {
                 map.insert("tag".to_string(), Value::String(tag.clone()));
                 map.insert(
                     "value".to_string(),
-                    value.as_ref().map(|v| v.to_json_value()).unwrap_or(Value::Null),
+                    value
+                        .as_ref()
+                        .map(|v| v.to_json_value())
+                        .unwrap_or(Value::Null),
                 );
                 Value::Object(map)
             }
-            ComponentValue::Option(inner) => {
-                inner.as_ref().map(|v| v.to_json_value()).unwrap_or(Value::Null)
-            }
+            ComponentValue::Option(inner) => inner
+                .as_ref()
+                .map(|v| v.to_json_value())
+                .unwrap_or(Value::Null),
             ComponentValue::Result { ok, err } => {
                 let mut map = Map::new();
                 map.insert(
                     "ok".to_string(),
-                    ok.as_ref().map(|v| v.to_json_value()).unwrap_or(Value::Null),
+                    ok.as_ref()
+                        .map(|v| v.to_json_value())
+                        .unwrap_or(Value::Null),
                 );
                 map.insert(
                     "err".to_string(),
-                    err.as_ref().map(|v| v.to_json_value()).unwrap_or(Value::Null),
+                    err.as_ref()
+                        .map(|v| v.to_json_value())
+                        .unwrap_or(Value::Null),
                 );
                 Value::Object(map)
             }
@@ -300,9 +310,7 @@ impl ComponentValue {
         }
 
         if raw.starts_with('"') && raw.ends_with('"') && raw.len() >= 2 {
-            return Ok(ComponentValue::String(
-                raw.trim_matches('"').to_string(),
-            ));
+            return Ok(ComponentValue::String(raw.trim_matches('"').to_string()));
         }
 
         if raw == "true" || raw == "false" {

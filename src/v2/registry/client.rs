@@ -269,14 +269,14 @@ impl RegistryClient {
         let info = self.get_version_info(name, version).await?;
         let download_url = self.rewrite_download_url(&info.download_url);
 
-        let response = self
-            .http
-            .get(&download_url)
-            .send()
-            .await
-            .map_err(|_| Error::RegistryUnavailable {
-                url: download_url.clone(),
-            })?;
+        let response =
+            self.http
+                .get(&download_url)
+                .send()
+                .await
+                .map_err(|_| Error::RegistryUnavailable {
+                    url: download_url.clone(),
+                })?;
 
         if !response.status().is_success() {
             return Err(Error::RegistryUnavailable {

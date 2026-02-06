@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
 use super::{
-    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession,
-    cache_store, execution_timeout, hash_source, try_cached_execution, wait_with_timeout,
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store,
+    execution_timeout, hash_source, try_cached_execution, wait_with_timeout,
 };
 
 pub struct RustEngine {
@@ -48,7 +48,8 @@ impl RustEngine {
         let mut cmd = Command::new(binary);
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.stdin(Stdio::inherit());
-        let child = cmd.spawn()
+        let child = cmd
+            .spawn()
             .with_context(|| format!("failed to execute compiled binary {}", binary.display()))?;
         wait_with_timeout(child, execution_timeout())
     }
@@ -114,7 +115,9 @@ impl LanguageEngine for RustEngine {
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Try cache for inline/stdin payloads
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+                Some(code.as_str())
+            }
             _ => None,
         } {
             let src_hash = hash_source(code);

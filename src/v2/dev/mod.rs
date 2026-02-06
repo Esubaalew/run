@@ -246,10 +246,8 @@ impl DevSession {
                             Ok(id) => {
                                 drop(runtime_lock);
                                 let _ = self.orchestrator.register(&id, vec![]);
-                                self.output.log_system(&format!(
-                                    "dependency '{}' loaded",
-                                    base_name
-                                ));
+                                self.output
+                                    .log_system(&format!("dependency '{}' loaded", base_name));
                             }
                             Err(_) => {}
                         }

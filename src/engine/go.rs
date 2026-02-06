@@ -8,8 +8,8 @@ use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
 use super::{
-    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession,
-    cache_store, execution_timeout, hash_source, try_cached_execution, wait_with_timeout,
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store,
+    execution_timeout, hash_source, try_cached_execution, wait_with_timeout,
 };
 
 pub struct GoEngine {
@@ -109,7 +109,9 @@ impl LanguageEngine for GoEngine {
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Try cache for inline/stdin payloads
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+                Some(code.as_str())
+            }
             _ => None,
         } {
             let src_hash = hash_source(code);
@@ -182,7 +184,10 @@ impl LanguageEngine for GoEngine {
                 .stderr(Stdio::piped())
                 .stdin(Stdio::inherit());
             let child = run_cmd.spawn().with_context(|| {
-                format!("failed to execute compiled Go binary {}", bin_path.display())
+                format!(
+                    "failed to execute compiled Go binary {}",
+                    bin_path.display()
+                )
             })?;
             let output = wait_with_timeout(child, execution_timeout())?;
 

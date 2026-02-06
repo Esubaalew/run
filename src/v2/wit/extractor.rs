@@ -133,7 +133,10 @@ fn convert_world_items(
         match item {
             WorldItem::Interface { id, .. } => {
                 let interface_ref = convert_interface_ref(resolve, package_id, *id, &name);
-                results.push(WitWorldItem::Interface { name, interface: interface_ref });
+                results.push(WitWorldItem::Interface {
+                    name,
+                    interface: interface_ref,
+                });
             }
             WorldItem::Function(func) => {
                 results.push(WitWorldItem::Function(convert_function(resolve, func)));
@@ -298,12 +301,16 @@ fn convert_type_id_inner(
                 .map(|ty| convert_type(resolve, ty))
                 .collect(),
         ),
-        TypeDefKind::Option(inner) => {
-            WitType::Option(Box::new(convert_type(resolve, inner)))
-        }
+        TypeDefKind::Option(inner) => WitType::Option(Box::new(convert_type(resolve, inner))),
         TypeDefKind::Result(result) => WitType::Result {
-            ok: result.ok.as_ref().map(|ty| Box::new(convert_type(resolve, ty))),
-            err: result.err.as_ref().map(|ty| Box::new(convert_type(resolve, ty))),
+            ok: result
+                .ok
+                .as_ref()
+                .map(|ty| Box::new(convert_type(resolve, ty))),
+            err: result
+                .err
+                .as_ref()
+                .map(|ty| Box::new(convert_type(resolve, ty))),
         },
         TypeDefKind::List(inner) => WitType::List(Box::new(convert_type(resolve, inner))),
         TypeDefKind::Type(inner) => convert_type(resolve, inner),

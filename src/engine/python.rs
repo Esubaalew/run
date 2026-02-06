@@ -7,7 +7,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, execution_timeout, wait_with_timeout};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, execution_timeout,
+    wait_with_timeout,
+};
 
 pub struct PythonEngine {
     executable: PathBuf,
@@ -68,9 +71,9 @@ impl LanguageEngine for PythonEngine {
                     .stdin(Stdio::inherit())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
-                let child = cmd.spawn().with_context(|| {
-                    format!("failed to start {}", self.binary().display())
-                })?;
+                let child = cmd
+                    .spawn()
+                    .with_context(|| format!("failed to start {}", self.binary().display()))?;
                 wait_with_timeout(child, timeout)?
             }
             ExecutionPayload::File { path } => {
@@ -78,9 +81,9 @@ impl LanguageEngine for PythonEngine {
                     .stdin(Stdio::inherit())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
-                let child = cmd.spawn().with_context(|| {
-                    format!("failed to start {}", self.binary().display())
-                })?;
+                let child = cmd
+                    .spawn()
+                    .with_context(|| format!("failed to start {}", self.binary().display()))?;
                 wait_with_timeout(child, timeout)?
             }
             ExecutionPayload::Stdin { code } => {
@@ -305,7 +308,9 @@ fn ensure_trailing_newline(code: &str) -> String {
 
 fn wrap_expression(code: &str, index: usize) -> String {
     // Store result in both a unique var and `_` for last-result access
-    format!("__run_value_{index} = ({code})\n_ = __run_value_{index}\nprint(repr(__run_value_{index}), flush=True)\n")
+    format!(
+        "__run_value_{index} = ({code})\n_ = __run_value_{index}\nprint(repr(__run_value_{index}), flush=True)\n"
+    )
 }
 
 fn diff_output(previous: &str, current: &str) -> String {

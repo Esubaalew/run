@@ -525,11 +525,7 @@ world hello-world {{
             if let Some(ref pkg) = package {
                 // Check if it's a local .wasm file first.
                 let wasm_path = project_dir.join(pkg);
-                if wasm_path.exists()
-                    && wasm_path
-                        .extension()
-                        .map(|e| e == "wasm")
-                        .unwrap_or(false)
+                if wasm_path.exists() && wasm_path.extension().map(|e| e == "wasm").unwrap_or(false)
                 {
                     use crate::v2::runtime::{RuntimeConfig, RuntimeEngine};
 
@@ -982,7 +978,9 @@ pub fn print_subcommand_help(subcommand: &str) {
             println!("run v2 exec - Execute a WASI component in production mode\n");
             println!("USAGE: run v2 exec <TARGET> [OPTIONS]\n");
             println!("ARGS:");
-            println!("    <TARGET>            Path to .wasm file or component name from run.toml\n");
+            println!(
+                "    <TARGET>            Path to .wasm file or component name from run.toml\n"
+            );
             println!("OPTIONS:");
             println!("    --function <NAME>   Call a specific exported function");
             println!("    --args <VALUE>      Arguments (repeat or comma-separated)");
@@ -999,7 +997,9 @@ pub fn print_subcommand_help(subcommand: &str) {
             println!("USAGE: run v2 install [PACKAGE[@VERSION]] [OPTIONS]\n");
             println!("ARGS:");
             println!("    [PACKAGE]           Package name (e.g. 'wasi:http' or 'ns:name@1.0.0')");
-            println!("                        If omitted, installs all dependencies from run.toml\n");
+            println!(
+                "                        If omitted, installs all dependencies from run.toml\n"
+            );
             println!("OPTIONS:");
             println!("    --dev               Install as dev dependency");
             println!("    --features <LIST>   Comma-separated feature list\n");

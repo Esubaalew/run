@@ -7,7 +7,10 @@ use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, execution_timeout, wait_with_timeout};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, execution_timeout,
+    wait_with_timeout,
+};
 
 pub struct JavascriptEngine {
     executable: PathBuf,
@@ -63,13 +66,14 @@ impl LanguageEngine for JavascriptEngine {
         let output = match payload {
             ExecutionPayload::Inline { code } => {
                 let mut cmd = self.run_command();
-                cmd.arg("-e").arg(code)
+                cmd.arg("-e")
+                    .arg(code)
                     .stdin(Stdio::inherit())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
-                let child = cmd.spawn().with_context(|| {
-                    format!("failed to start {}", self.binary().display())
-                })?;
+                let child = cmd
+                    .spawn()
+                    .with_context(|| format!("failed to start {}", self.binary().display()))?;
                 wait_with_timeout(child, timeout)?
             }
             ExecutionPayload::File { path } => {
@@ -78,9 +82,9 @@ impl LanguageEngine for JavascriptEngine {
                     .stdin(Stdio::inherit())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
-                let child = cmd.spawn().with_context(|| {
-                    format!("failed to start {}", self.binary().display())
-                })?;
+                let child = cmd
+                    .spawn()
+                    .with_context(|| format!("failed to start {}", self.binary().display()))?;
                 wait_with_timeout(child, timeout)?
             }
             ExecutionPayload::Stdin { code } => {
@@ -141,7 +145,9 @@ impl LanguageEngine for JavascriptEngine {
                 match reader.read_line(&mut buf) {
                     Ok(0) => break,
                     Ok(_) => {
-                        let Ok(mut lock) = stderr_collector.lock() else { break };
+                        let Ok(mut lock) = stderr_collector.lock() else {
+                            break;
+                        };
                         lock.push_str(&buf);
                     }
                     Err(_) => break,

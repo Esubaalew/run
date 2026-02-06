@@ -133,10 +133,7 @@ pub fn execution_timeout() -> Duration {
 
 /// Wait for a child process with a timeout. Kills the process if it exceeds the limit.
 /// Returns the Output on success, or an error on timeout.
-pub fn wait_with_timeout(
-    mut child: Child,
-    timeout: Duration,
-) -> Result<std::process::Output> {
+pub fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<std::process::Output> {
     let start = Instant::now();
     let poll_interval = Duration::from_millis(50);
 
@@ -430,7 +427,9 @@ impl LanguageRegistry {
 
 /// Returns the package install command for a language, if one exists.
 /// Returns (binary, args_before_package) so the caller can append the package name.
-pub fn package_install_command(language_id: &str) -> Option<(&'static str, &'static [&'static str])> {
+pub fn package_install_command(
+    language_id: &str,
+) -> Option<(&'static str, &'static [&'static str])> {
     match language_id {
         "python" => Some(("pip", &["install"])),
         "javascript" | "typescript" => Some(("npm", &["install"])),
@@ -441,13 +440,13 @@ pub fn package_install_command(language_id: &str) -> Option<(&'static str, &'sta
         "lua" => Some(("luarocks", &["install"])),
         "dart" => Some(("dart", &["pub", "add"])),
         "perl" => Some(("cpanm", &[])),
-        "julia" => Some(("julia", &["-e"])),  // special: wraps in Pkg.add()
+        "julia" => Some(("julia", &["-e"])), // special: wraps in Pkg.add()
         "haskell" => Some(("cabal", &["install"])),
         "nim" => Some(("nimble", &["install"])),
-        "r" => Some(("Rscript", &["-e"])),  // special: wraps in install.packages()
-        "kotlin" => None, // no standard CLI package manager
-        "java" => None,   // maven/gradle are project-based
-        "c" | "cpp" => None, // system packages
+        "r" => Some(("Rscript", &["-e"])), // special: wraps in install.packages()
+        "kotlin" => None,                  // no standard CLI package manager
+        "java" => None,                    // maven/gradle are project-based
+        "c" | "cpp" => None,               // system packages
         "bash" => None,
         "swift" => None,
         "crystal" => Some(("shards", &["install"])),
@@ -469,7 +468,8 @@ pub fn build_install_command(language_id: &str, package: &str) -> Option<std::pr
     match language_id {
         "julia" => {
             // julia -e 'using Pkg; Pkg.add("package")'
-            cmd.arg("-e").arg(format!("using Pkg; Pkg.add(\"{package}\")"));
+            cmd.arg("-e")
+                .arg(format!("using Pkg; Pkg.add(\"{package}\")"));
         }
         "r" => {
             // Rscript -e 'install.packages("package", repos="https://cran.r-project.org")'
