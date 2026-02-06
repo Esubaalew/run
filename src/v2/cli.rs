@@ -252,6 +252,29 @@ pub async fn execute(cmd: V2Command, project_dir: PathBuf) -> Result<i32> {
             let runtime_config = RuntimeConfig::production();
             let mut engine = RuntimeEngine::new(runtime_config)?;
 
+            // Pre-load installed dependencies so cross-component imports resolve.
+            let deps_dir = project_dir.join(".run").join("components");
+            if deps_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&deps_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map(|e| e == "wasm").unwrap_or(false) {
+                            let dep_name = path
+                                .file_stem()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            let base_name = dep_name
+                                .rsplit_once('@')
+                                .map(|(n, _)| n.to_string())
+                                .unwrap_or_else(|| dep_name.clone());
+                            if let Ok(bytes) = std::fs::read(&path) {
+                                let _ = engine.load_component_bytes(&base_name, bytes);
+                            }
+                        }
+                    }
+                }
+            }
+
             let mut caps = CapabilitySet::deterministic();
             caps.grant(Capability::Stdout);
             caps.grant(Capability::Stderr);
@@ -343,17 +366,28 @@ pub async fn execute(cmd: V2Command, project_dir: PathBuf) -> Result<i32> {
                 let component_id = engine.load_component(&wasm_path)?;
                 let handle = engine.instantiate(&component_id, caps)?;
                 let result = engine.call(&handle, &func, parsed_args)?;
-                if !result.stdout.is_empty() {
-                    if json {
-                        println!("{}", String::from_utf8_lossy(&result.stdout));
-                    } else {
+                if json {
+                    let output = serde_json::json!({
+                        "exit_code": result.exit_code,
+                        "stdout": String::from_utf8_lossy(&result.stdout),
+                        "stderr": String::from_utf8_lossy(&result.stderr),
+                        "return_value": result
+                            .return_value
+                            .as_ref()
+                            .map(|v| v.to_json_value())
+                            .unwrap_or(serde_json::Value::Null),
+                    });
+                    println!("{}", output);
+                } else {
+                    if !result.stdout.is_empty() {
                         print!("{}", String::from_utf8_lossy(&result.stdout));
                     }
-                }
-                if !result.stderr.is_empty() {
-                    eprint!("{}", String::from_utf8_lossy(&result.stderr));
-                }
-                if !json {
+                    if !result.stderr.is_empty() {
+                        eprint!("{}", String::from_utf8_lossy(&result.stderr));
+                    }
+                    if let Some(value) = result.return_value.as_ref() {
+                        println!("[exec] return: {}", value.to_display_string());
+                    }
                     println!("[exec] completed (exit={})", result.exit_code);
                 }
                 Ok(result.exit_code)
@@ -375,19 +409,30 @@ pub async fn execute(cmd: V2Command, project_dir: PathBuf) -> Result<i32> {
                     stdout: call.stdout,
                     stderr: call.stderr,
                     duration_ms: 0,
-                    return_value: None,
+                    return_value: call.return_value,
                 };
-                if !result.stdout.is_empty() {
-                    if json {
-                        println!("{}", String::from_utf8_lossy(&result.stdout));
-                    } else {
+                if json {
+                    let output = serde_json::json!({
+                        "exit_code": result.exit_code,
+                        "stdout": String::from_utf8_lossy(&result.stdout),
+                        "stderr": String::from_utf8_lossy(&result.stderr),
+                        "return_value": result
+                            .return_value
+                            .as_ref()
+                            .map(|v| v.to_json_value())
+                            .unwrap_or(serde_json::Value::Null),
+                    });
+                    println!("{}", output);
+                } else {
+                    if !result.stdout.is_empty() {
                         print!("{}", String::from_utf8_lossy(&result.stdout));
                     }
-                }
-                if !result.stderr.is_empty() {
-                    eprint!("{}", String::from_utf8_lossy(&result.stderr));
-                }
-                if !json {
+                    if !result.stderr.is_empty() {
+                        eprint!("{}", String::from_utf8_lossy(&result.stderr));
+                    }
+                    if let Some(value) = result.return_value.as_ref() {
+                        println!("[exec] return: {}", value.to_display_string());
+                    }
                     println!("[exec] completed (exit={})", result.exit_code);
                 }
                 Ok(result.exit_code)
@@ -413,15 +458,62 @@ pub async fn execute(cmd: V2Command, project_dir: PathBuf) -> Result<i32> {
             std::fs::create_dir_all(project_dir.join("components"))?;
             std::fs::create_dir_all(project_dir.join("wit"))?;
 
+            // Generate a starter hello-world component.
+            let hello_wat = format!(
+                r#";; {name} - starter WASI component
+;; Run with: run v2 exec components/hello.wasm --function greet --args "s32:42"
+(component
+  (core module $m
+    (func (export "greet") (param i32) (result i32)
+      local.get 0
+      i32.const 1
+      i32.add)
+  )
+  (core instance $i (instantiate $m))
+  (type $greet_t (func (param "n" s32) (result s32)))
+  (func $greet (type $greet_t) (canon lift (core func $i "greet")))
+  (export "greet" (func $greet))
+)
+"#,
+                name = name
+            );
+            std::fs::write(project_dir.join("components").join("hello.wat"), &hello_wat)?;
+
+            // Generate a starter WIT interface.
+            let wit_content = format!(
+                r#"package {name}:hello@0.1.0;
+
+interface greeter {{
+    greet: func(n: s32) -> s32;
+}}
+
+world hello-world {{
+    export greeter;
+}}
+"#,
+                name = name
+            );
+            std::fs::write(project_dir.join("wit").join("hello.wit"), wit_content)?;
+
+            // Append component to run.toml
+            let mut toml_content = std::fs::read_to_string(&config_path)?;
+            toml_content.push_str(&format!(
+                "\n[components.hello]\npath = \"components/hello.wasm\"\n\n\
+                 [tests.greet_42]\ncomponent = \"hello\"\nfunction = \"greet\"\n\
+                 args = [\"s32:42\"]\nexpect = \"s32:43\"\n"
+            ));
+            std::fs::write(&config_path, toml_content)?;
+
             println!("Initialized Run 2.0 project: {}", name);
             println!("\nCreated:");
-            println!("  run.toml");
-            println!("  components/");
-            println!("  wit/");
-            println!("\nNext steps:");
-            println!("  1. Add components to run.toml");
-            println!("  2. Define WIT interfaces in wit/");
-            println!("  3. Run `run v2 dev` to start developing");
+            println!("  run.toml              Project configuration");
+            println!("  components/hello.wat  Starter WASI component (WAT source)");
+            println!("  wit/hello.wit         WIT interface definition");
+            println!("\nQuick start:");
+            println!("  1. wasm-tools parse components/hello.wat -o components/hello.wasm");
+            println!("  2. run v2 exec components/hello.wasm --function greet --args \"s32:42\"");
+            println!("  3. run v2 test");
+            println!("  4. run v2 dev");
             Ok(0)
         }
 
@@ -430,11 +522,54 @@ pub async fn execute(cmd: V2Command, project_dir: PathBuf) -> Result<i32> {
             components,
             verbose,
         } => {
-            if let Some(pkg) = package {
+            if let Some(ref pkg) = package {
+                // Check if it's a local .wasm file first.
+                let wasm_path = project_dir.join(pkg);
+                if wasm_path.exists()
+                    && wasm_path
+                        .extension()
+                        .map(|e| e == "wasm")
+                        .unwrap_or(false)
+                {
+                    use crate::v2::runtime::{RuntimeConfig, RuntimeEngine};
+
+                    let bytes = std::fs::read(&wasm_path)?;
+                    let is_component = bytes.len() >= 8 && bytes[4..8] == [0x0d, 0x00, 0x01, 0x00];
+
+                    println!("File: {}", wasm_path.display());
+                    println!("Size: {} bytes", bytes.len());
+                    println!(
+                        "Type: {}",
+                        if is_component {
+                            "WASI component"
+                        } else {
+                            "WASM module"
+                        }
+                    );
+
+                    let mut engine = RuntimeEngine::new(RuntimeConfig::default())?;
+                    let comp_id = wasm_path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "unknown".into());
+                    if let Ok(id) = engine.load_component_bytes(&comp_id, bytes) {
+                        if let Some(info) = engine.get_loaded_component(&id) {
+                            if !info.exports.is_empty() {
+                                println!("\nExports:");
+                                for e in &info.exports {
+                                    println!("  - {}", e);
+                                }
+                            }
+                        }
+                    }
+
+                    return Ok(0);
+                }
+
                 let config = RegistryConfig::default();
                 let registry = Registry::new(config, &project_dir)?;
 
-                let info = registry.info(&pkg).await?;
+                let info = registry.info(pkg).await?;
                 println!("Package: {}", info.name);
                 println!("Version: {}", info.version);
                 println!("Description: {}", info.description);
@@ -828,4 +963,104 @@ pub fn print_help() {
     println!("    run v2 compose analyze docker-compose.yml");
     println!("    run v2 compose migrate docker-compose.yml run.toml");
     println!("    run v2 toolchain sync         # Update run.lock.toml");
+}
+
+pub fn print_subcommand_help(subcommand: &str) {
+    match subcommand {
+        "dev" => {
+            println!("run v2 dev - Start development server with hot reload\n");
+            println!("USAGE: run v2 dev [OPTIONS]\n");
+            println!("OPTIONS:");
+            println!("    --port <PORT>       Dev server port (default: 3000)");
+            println!("    --no-hot-reload     Disable file watching");
+            println!("    -v, --verbose       Show inter-component calls\n");
+            println!("EXAMPLES:");
+            println!("    run v2 dev");
+            println!("    run v2 dev --port 8080");
+        }
+        "exec" => {
+            println!("run v2 exec - Execute a WASI component in production mode\n");
+            println!("USAGE: run v2 exec <TARGET> [OPTIONS]\n");
+            println!("ARGS:");
+            println!("    <TARGET>            Path to .wasm file or component name from run.toml\n");
+            println!("OPTIONS:");
+            println!("    --function <NAME>   Call a specific exported function");
+            println!("    --args <VALUE>      Arguments (repeat or comma-separated)");
+            println!("    --json              Structured JSON output");
+            println!("    --allow-clock       Allow clock access (breaks determinism)");
+            println!("    --allow-random      Allow random access (breaks determinism)\n");
+            println!("EXAMPLES:");
+            println!("    run v2 exec app.wasm");
+            println!("    run v2 exec app.wasm --function add --args 3 --args 4");
+            println!("    run v2 exec app.wasm --function add --args \"3,4\" --json");
+        }
+        "install" => {
+            println!("run v2 install - Install WASI components from registry\n");
+            println!("USAGE: run v2 install [PACKAGE[@VERSION]] [OPTIONS]\n");
+            println!("ARGS:");
+            println!("    [PACKAGE]           Package name (e.g. 'wasi:http' or 'ns:name@1.0.0')");
+            println!("                        If omitted, installs all dependencies from run.toml\n");
+            println!("OPTIONS:");
+            println!("    --dev               Install as dev dependency");
+            println!("    --features <LIST>   Comma-separated feature list\n");
+            println!("EXAMPLES:");
+            println!("    run v2 install wasi:http");
+            println!("    run v2 install mylib@0.2.0 --dev");
+            println!("    run v2 install                   # install from run.toml");
+        }
+        "build" => {
+            println!("run v2 build - Build WASI 0.2 components from source\n");
+            println!("USAGE: run v2 build [OPTIONS]\n");
+            println!("OPTIONS:");
+            println!("    --release           Optimized release build");
+            println!("    --reproducible      Enable reproducible build environment");
+            println!("    --component <NAME>  Build a single component\n");
+            println!("SUPPORTED LANGUAGES: Rust, Go, Python, JavaScript, TypeScript, Zig\n");
+            println!("EXAMPLES:");
+            println!("    run v2 build");
+            println!("    run v2 build --release --reproducible");
+            println!("    run v2 build --component api");
+        }
+        "test" => {
+            println!("run v2 test - Run component tests\n");
+            println!("USAGE: run v2 test [OPTIONS]\n");
+            println!("OPTIONS:");
+            println!("    --build             Build components before testing");
+            println!("    --component <NAME>  Test a specific component");
+            println!("    --json              Structured JSON output\n");
+            println!("Tests can be defined in [tests.<name>] sections of run.toml,");
+            println!("or auto-discovered from component exports named test_*.\n");
+            println!("EXAMPLES:");
+            println!("    run v2 test");
+            println!("    run v2 test --build --component api");
+        }
+        "publish" => {
+            println!("run v2 publish - Publish a component to the registry\n");
+            println!("USAGE: run v2 publish [OPTIONS]\n");
+            println!("OPTIONS:");
+            println!("    --build             Build before publishing");
+            println!("    --token <TOKEN>     Auth token (or set RUN_REGISTRY_TOKEN)\n");
+            println!("EXAMPLES:");
+            println!("    run v2 publish");
+            println!("    run v2 publish --build --token mytoken");
+        }
+        "deploy" => {
+            println!("run v2 deploy - Deploy components to target environments\n");
+            println!("USAGE: run v2 deploy [OPTIONS]\n");
+            println!("OPTIONS:");
+            println!("    --target <TARGET>   Deployment target: local, edge, registry");
+            println!("    --build             Build before deploying\n");
+            println!("EDGE PROVIDERS: cloudflare, fastly, aws-lambda, vercel\n");
+            println!("EXAMPLES:");
+            println!("    run v2 deploy --target local");
+            println!("    run v2 deploy --target edge");
+        }
+        "init" => {
+            println!("run v2 init - Initialize a new Run 2.0 project\n");
+            println!("USAGE: run v2 init <NAME>\n");
+            println!("EXAMPLES:");
+            println!("    run v2 init my-app");
+        }
+        _ => print_help(),
+    }
 }

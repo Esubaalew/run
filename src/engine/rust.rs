@@ -6,7 +6,10 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession,
+    cache_store, execution_timeout, hash_source, try_cached_execution, wait_with_timeout,
+};
 
 pub struct RustEngine {
     compiler: Option<PathBuf>,
@@ -45,8 +48,9 @@ impl RustEngine {
         let mut cmd = Command::new(binary);
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.stdin(Stdio::inherit());
-        cmd.output()
-            .with_context(|| format!("failed to execute compiled binary {}", binary.display()))
+        let child = cmd.spawn()
+            .with_context(|| format!("failed to execute compiled binary {}", binary.display()))?;
+        wait_with_timeout(child, execution_timeout())
     }
 
     fn write_inline_source(&self, code: &str, dir: &Path) -> Result<PathBuf> {
@@ -108,16 +112,40 @@ impl LanguageEngine for RustEngine {
     }
 
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
+        // Try cache for inline/stdin payloads
+        if let Some(code) = match payload {
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            _ => None,
+        } {
+            let src_hash = hash_source(code);
+            if let Some(output) = try_cached_execution(src_hash) {
+                let start = Instant::now();
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: output.status.code(),
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+        }
+
         let temp_dir = Builder::new()
             .prefix("run-rust")
             .tempdir()
             .context("failed to create temporary directory for rust build")?;
         let dir_path = temp_dir.path();
 
-        let (source_path, cleanup_source): (PathBuf, bool) = match payload {
-            ExecutionPayload::Inline { code } => (self.write_inline_source(code, dir_path)?, true),
-            ExecutionPayload::Stdin { code } => (self.write_inline_source(code, dir_path)?, true),
-            ExecutionPayload::File { path } => (path.clone(), false),
+        let (source_path, cleanup_source, cache_key): (PathBuf, bool, Option<u64>) = match payload {
+            ExecutionPayload::Inline { code } => {
+                let h = hash_source(code);
+                (self.write_inline_source(code, dir_path)?, true, Some(h))
+            }
+            ExecutionPayload::Stdin { code } => {
+                let h = hash_source(code);
+                (self.write_inline_source(code, dir_path)?, true, Some(h))
+            }
+            ExecutionPayload::File { path } => (path.clone(), false, None),
         };
 
         let binary_path = Self::tmp_binary_path(dir_path);
@@ -134,6 +162,11 @@ impl LanguageEngine for RustEngine {
                 stderr,
                 duration: start.elapsed(),
             });
+        }
+
+        // Store in cache before running
+        if let Some(h) = cache_key {
+            cache_store(h, &binary_path);
         }
 
         let runtime_output = self.run_binary(&binary_path)?;

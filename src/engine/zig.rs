@@ -6,7 +6,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession,
+    cache_store, hash_source, try_cached_execution,
+};
 
 pub struct ZigEngine {
     executable: Option<PathBuf>,
@@ -95,24 +98,81 @@ impl LanguageEngine for ZigEngine {
     }
 
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
+        // Try cache for inline/stdin payloads
+        if let Some(code) = match payload {
+            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            _ => None,
+        } {
+            let snippet = wrap_inline_snippet(code);
+            let src_hash = hash_source(&snippet);
+            if let Some(output) = try_cached_execution(src_hash) {
+                let start = Instant::now();
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: output.status.code(),
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+        }
+
         let start = Instant::now();
-        let (temp_dir, source_path) = match payload {
+        let (temp_dir, source_path, cache_key) = match payload {
             ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
                 let snippet = wrap_inline_snippet(code);
+                let h = hash_source(&snippet);
                 let (dir, path) = self.write_temp_source(&snippet)?;
-                (Some(dir), path)
+                (Some(dir), path, Some(h))
             }
             ExecutionPayload::File { path } => {
                 if path.extension().and_then(|e| e.to_str()) != Some("zig") {
                     let code = std::fs::read_to_string(path)?;
                     let (dir, new_path) = self.write_temp_source(&code)?;
-                    (Some(dir), new_path)
+                    (Some(dir), new_path, None)
                 } else {
-                    (None, path.clone())
+                    (None, path.clone(), None)
                 }
             }
         };
 
+        // For cacheable code, try zig build-exe + cache
+        if let Some(h) = cache_key {
+            let executable = self.ensure_executable()?;
+            let dir = source_path.parent().unwrap_or(std::path::Path::new("."));
+            let bin_path = dir.join("snippet");
+            let mut build_cmd = Command::new(executable);
+            build_cmd
+                .arg("build-exe")
+                .arg(&source_path)
+                .arg("-femit-bin=snippet")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .current_dir(dir);
+
+            if let Ok(build_output) = build_cmd.output() {
+                if build_output.status.success() && bin_path.exists() {
+                    cache_store(h, &bin_path);
+                    let mut run_cmd = Command::new(&bin_path);
+                    run_cmd
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .stdin(Stdio::inherit());
+                    if let Ok(output) = run_cmd.output() {
+                        drop(temp_dir);
+                        return Ok(ExecutionOutcome {
+                            language: self.id().to_string(),
+                            exit_code: output.status.code(),
+                            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                            duration: start.elapsed(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Fallback to zig run
         let output = self.run_source(&source_path)?;
         drop(temp_dir);
 

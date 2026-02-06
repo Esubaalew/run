@@ -193,6 +193,9 @@ impl ComponentLinker {
             for import in imports {
                 let key = (component_id.to_string(), import.import_name.clone());
                 if !self.resolved_links.contains_key(&key) {
+                    if is_wasi_import(&import.interface_ref) {
+                        continue;
+                    }
                     return Err(LinkageError::UnsatisfiedImport {
                         component: component_id.to_string(),
                         interface: import.import_name.clone(),
@@ -284,6 +287,13 @@ impl ComponentLinker {
         self.exports.clear();
         self.pending_imports.clear();
         self.resolved_links.clear();
+    }
+}
+
+fn is_wasi_import(interface_ref: &WitInterfaceRef) -> bool {
+    match interface_ref {
+        WitInterfaceRef::External { package, .. } => package.namespace == "wasi",
+        _ => false,
     }
 }
 
@@ -445,11 +455,73 @@ impl ComponentLinker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::v2::wit::{WitInterfaceRef, WitPackage, WitPackageId, WitWorld, WitWorldItem};
+    use std::collections::HashMap;
 
     #[test]
     fn test_linker_creation() {
         let linker = ComponentLinker::new();
         assert!(linker.exports.is_empty());
         assert!(linker.pending_imports.is_empty());
+    }
+
+    #[test]
+    fn test_wasi_imports_are_satisfied() {
+        let mut linker = ComponentLinker::new();
+        let wasi_pkg = WitPackageId::new("wasi", "cli", Some("0.2.3")).unwrap();
+        let world = WitWorld {
+            name: "test".to_string(),
+            imports: vec![WitWorldItem::Interface {
+                name: "environment".to_string(),
+                interface: WitInterfaceRef::External {
+                    package: wasi_pkg,
+                    interface: "environment".to_string(),
+                },
+            }],
+            exports: vec![],
+            docs: None,
+        };
+        let mut worlds = HashMap::new();
+        worlds.insert("test".to_string(), world);
+        let pkg = WitPackage {
+            id: WitPackageId::new("example", "test", None).unwrap(),
+            interfaces: HashMap::new(),
+            worlds,
+        };
+
+        linker.register_imports("comp1", &pkg).unwrap();
+        assert!(linker.check_satisfied("comp1").is_ok());
+    }
+
+    #[test]
+    fn test_non_wasi_imports_require_provider() {
+        let mut linker = ComponentLinker::new();
+        let ext_pkg = WitPackageId::new("example", "dep", None).unwrap();
+        let world = WitWorld {
+            name: "test".to_string(),
+            imports: vec![WitWorldItem::Interface {
+                name: "dep".to_string(),
+                interface: WitInterfaceRef::External {
+                    package: ext_pkg,
+                    interface: "dep".to_string(),
+                },
+            }],
+            exports: vec![],
+            docs: None,
+        };
+        let mut worlds = HashMap::new();
+        worlds.insert("test".to_string(), world);
+        let pkg = WitPackage {
+            id: WitPackageId::new("example", "test", None).unwrap(),
+            interfaces: HashMap::new(),
+            worlds,
+        };
+
+        linker.register_imports("comp1", &pkg).unwrap();
+        let err = linker.check_satisfied("comp1").unwrap_err();
+        match err {
+            LinkageError::UnsatisfiedImport { .. } => {}
+            _ => panic!("expected UnsatisfiedImport"),
+        }
     }
 }

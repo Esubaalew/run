@@ -36,7 +36,7 @@ impl Default for RuntimeConfig {
             max_concurrent_components: 100,
             debug: false,
             fuel_limit: None,
-            epoch_interruption: true,
+            epoch_interruption: false,
         }
     }
 }
@@ -55,7 +55,7 @@ impl RuntimeConfig {
             security: SecurityPolicy::default(),
             debug: false,
             fuel_limit: Some(1_000_000_000),
-            epoch_interruption: true,
+            epoch_interruption: false,
             ..Default::default()
         }
     }
@@ -64,7 +64,7 @@ impl RuntimeConfig {
     fn to_wasmtime_config(&self) -> Config {
         let mut config = Config::new();
         config.wasm_component_model(true);
-        config.async_support(true);
+        config.async_support(false);
 
         if self.fuel_limit.is_some() {
             config.consume_fuel(true);
@@ -232,26 +232,28 @@ impl RuntimeEngine {
             .ok_or_else(|| Error::ComponentNotFound(component_id.to_string()))?;
 
         let import_bindings = if let Some(ref wit) = component.wit {
-            let mut linker = self.linker.lock().unwrap();
-            linker.register_exports(component_id, wit)?;
-            linker.resolve_imports(component_id, wit)?;
-            if let Err(e) = linker.check_satisfied(component_id) {
-                return Err(Error::ComponentInstantiation {
-                    component: component_id.to_string(),
-                    reason: e.to_string(),
-                });
-            }
-            let errors = linker.validate_all_links();
-            if !errors.is_empty() {
-                let details = errors
-                    .into_iter()
-                    .map(|e| e.to_string())
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                return Err(Error::ComponentInstantiation {
-                    component: component_id.to_string(),
-                    reason: details,
-                });
+            {
+                let mut linker = self.linker.lock().unwrap();
+                linker.register_exports(component_id, wit)?;
+                linker.resolve_imports(component_id, wit)?;
+                if let Err(e) = linker.check_satisfied(component_id) {
+                    return Err(Error::ComponentInstantiation {
+                        component: component_id.to_string(),
+                        reason: e.to_string(),
+                    });
+                }
+                let errors = linker.validate_all_links();
+                if !errors.is_empty() {
+                    let details = errors
+                        .into_iter()
+                        .map(|e| e.to_string())
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    return Err(Error::ComponentInstantiation {
+                        component: component_id.to_string(),
+                        reason: details,
+                    });
+                }
             }
 
             self.build_import_bindings(component_id, wit)?
@@ -404,13 +406,36 @@ impl RuntimeEngine {
             stdout: result.stdout,
             stderr: result.stderr,
             duration_ms: start.elapsed().as_millis() as u64,
-            return_value: None,
+            return_value: result.return_value,
         })
     }
 
     pub fn get_instance(&self, handle: &InstanceHandle) -> Option<Arc<ComponentInstance>> {
         let instances = self.instances.lock().unwrap();
         instances.get(&handle.id).cloned()
+    }
+
+    pub fn get_loaded_component(&self, id: &str) -> Option<LoadedComponentInfo> {
+        let component = self.components.get(id)?;
+        let mut exports = Vec::new();
+        if let Some(ref wit) = component.wit {
+            for world in wit.worlds.values() {
+                for item in &world.exports {
+                    match item {
+                        crate::v2::wit::WitWorldItem::Function(f) => {
+                            exports.push(f.name.clone());
+                        }
+                        crate::v2::wit::WitWorldItem::Interface { name, .. } => {
+                            exports.push(name.clone());
+                        }
+                        crate::v2::wit::WitWorldItem::Type { .. } => {
+                            // Type exports don't produce callable functions.
+                        }
+                    }
+                }
+            }
+        }
+        Some(LoadedComponentInfo { exports })
     }
 
     pub fn terminate(&self, handle: &InstanceHandle) -> Result<()> {
@@ -592,6 +617,11 @@ impl RuntimeEngine {
     }
 }
 
+/// Lightweight info about a loaded (but not yet instantiated) component.
+pub struct LoadedComponentInfo {
+    pub exports: Vec<String>,
+}
+
 #[derive(Debug)]
 pub struct CliContext {
     pub args: Vec<String>,
@@ -611,6 +641,9 @@ pub struct ComponentInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
+    use std::sync::{mpsc, Arc};
+    use std::time::Duration;
 
     #[test]
     fn test_runtime_config_defaults() {
@@ -640,5 +673,74 @@ mod tests {
         // Directly test the validation logic
         let result = engine.validate_capabilities(&caps);
         assert!(matches!(result, Err(Error::InvalidCapability(_))));
+    }
+
+    #[test]
+    #[cfg(feature = "v2")]
+    fn test_instantiate_does_not_deadlock() {
+        if Command::new("wasm-tools").arg("--version").output().is_err() {
+            eprintln!("skipping: wasm-tools not available in PATH");
+            return;
+        }
+
+        let wasm_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("runtime/components/calculator.wasm");
+        let bytes = std::fs::read(&wasm_path).expect("calculator.wasm missing");
+
+        let mut engine = RuntimeEngine::new(RuntimeConfig::development()).unwrap();
+        let component_id = engine
+            .load_component_bytes("calculator", bytes)
+            .expect("failed to load component");
+
+        let engine = Arc::new(engine);
+        let (tx, rx) = mpsc::channel();
+        let caps = CapabilitySet::dev_default();
+        let engine_for_thread = Arc::clone(&engine);
+
+        std::thread::spawn(move || {
+            let result = engine_for_thread.instantiate(&component_id, caps);
+            let _ = tx.send(result.is_ok());
+        });
+
+        match rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(true) => {}
+            Ok(false) => panic!("instantiate returned error"),
+            Err(_) => panic!("instantiate appears to hang (timeout)"),
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "v2")]
+    fn test_call_resolves_unqualified_function() {
+        if Command::new("wasm-tools").arg("--version").output().is_err() {
+            eprintln!("skipping: wasm-tools not available in PATH");
+            return;
+        }
+
+        let wasm_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("runtime/components/calculator.wasm");
+        let bytes = std::fs::read(&wasm_path).expect("calculator.wasm missing");
+
+        let mut engine = RuntimeEngine::new(RuntimeConfig::development()).unwrap();
+        let component_id = engine
+            .load_component_bytes("calculator", bytes)
+            .expect("failed to load component");
+
+        let handle = engine
+            .instantiate(&component_id, CapabilitySet::dev_default())
+            .expect("instantiate failed");
+
+        let result = engine
+            .call(
+                &handle,
+                "add",
+                vec![ComponentValue::S32(1), ComponentValue::S32(2)],
+            )
+            .expect("call failed");
+
+        match result.return_value {
+            Some(ComponentValue::S32(v)) => assert_eq!(v, 3),
+            other => panic!("unexpected return value: {:?}", other),
+        }
     }
 }

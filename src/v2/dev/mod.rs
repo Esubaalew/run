@@ -75,7 +75,8 @@ impl DevSession {
         let start_time = Instant::now();
 
         let config_path = options.project_dir.join("run.toml");
-        let mut config = if config_path.exists() {
+        let has_config = config_path.exists();
+        let mut config = if has_config {
             RunConfig::load(&config_path)?
         } else {
             RunConfig::default()
@@ -100,7 +101,7 @@ impl DevSession {
 
         let output = OutputManager::new(options.verbose);
 
-        let watcher = if options.hot_reload {
+        let watcher = if options.hot_reload && has_config {
             let watch_patterns = config.dev.watch.clone();
             Some(FileWatcher::new(&options.project_dir, watch_patterns)?)
         } else {
@@ -154,6 +155,11 @@ impl DevSession {
     pub async fn start(&mut self) -> Result<()> {
         self.running
             .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        if !self.project_dir.join("run.toml").exists() {
+            self.output
+                .log_warning("config", "run.toml not found; hot reload disabled");
+        }
 
         let startup_time = self.start_time.elapsed();
         self.output
@@ -214,6 +220,43 @@ impl DevSession {
 
         let load_start = std::time::Instant::now();
         let mut loaded_count = 0;
+
+        // Pre-load installed dependencies so they're available as import providers.
+        let deps_dir = self.project_dir.join(".run").join("components");
+        if deps_dir.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&deps_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "wasm").unwrap_or(false) {
+                        let dep_name = path
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        // Strip @version suffix: "foo@1.0.0" -> "foo"
+                        let base_name = dep_name
+                            .rsplit_once('@')
+                            .map(|(name, _)| name.to_string())
+                            .unwrap_or_else(|| dep_name.clone());
+                        let bytes = match std::fs::read(&path) {
+                            Ok(b) => b,
+                            Err(_) => continue,
+                        };
+                        let mut runtime_lock = self.runtime.lock().unwrap();
+                        match runtime_lock.load_component_bytes(&base_name, bytes) {
+                            Ok(id) => {
+                                drop(runtime_lock);
+                                let _ = self.orchestrator.register(&id, vec![]);
+                                self.output.log_system(&format!(
+                                    "dependency '{}' loaded",
+                                    base_name
+                                ));
+                            }
+                            Err(_) => {}
+                        }
+                    }
+                }
+            }
+        }
 
         for (name, comp_config) in &self.config.components {
             let wasm_path =

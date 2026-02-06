@@ -143,7 +143,7 @@ impl Default for BuildConfig {
     fn default() -> Self {
         Self {
             output_dir: "target/wasm".to_string(),
-            target: "wasm32-wasip1".to_string(),
+            target: "wasm32-wasip2".to_string(),
             opt_level: "release".to_string(),
             debug: false,
             reproducible: false,

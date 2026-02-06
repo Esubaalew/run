@@ -14,6 +14,7 @@ use anyhow::anyhow;
 use wasmtime::Store;
 #[cfg(feature = "v2")]
 use wasmtime::component::{Instance, Linker as WasmtimeLinker, Val};
+use crate::v2::wit::WitWorldItem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstanceState {
@@ -358,13 +359,7 @@ impl ComponentInstance {
         let instance_guard = self.wasmtime_instance.lock().unwrap();
 
         if let Some(instance) = instance_guard.as_ref() {
-            let func =
-                instance
-                    .get_func(&mut *store, function)
-                    .ok_or_else(|| Error::ExecutionFailed {
-                        component: self.component_id().to_string(),
-                        reason: format!("Function '{}' not found", function),
-                    })?;
+            let func = self.resolve_component_func(instance, store, function)?;
 
             let wasm_args: Vec<Val> = args.iter().map(component_value_to_val).collect();
             let results_len = func.results(&mut *store).len();
@@ -377,7 +372,7 @@ impl ComponentInstance {
                     self.set_state(InstanceState::Error);
                     Error::ExecutionFailed {
                         component: self.component_id().to_string(),
-                        reason: e.to_string(),
+                        reason: format!("{:?}", e),
                     }
                 })?;
 
@@ -413,6 +408,77 @@ impl ComponentInstance {
                 reason: "Component not compiled or instance not created".to_string(),
             })
         }
+    }
+
+    #[cfg(feature = "v2")]
+    fn resolve_component_func(
+        &self,
+        instance: &Instance,
+        store: &mut Store<WasiHostState>,
+        function: &str,
+    ) -> Result<wasmtime::component::Func> {
+        if let Some(func) = instance.get_func(&mut *store, function) {
+            return Ok(func);
+        }
+
+        if let Some((iface, func)) = split_function_path(function) {
+            if let Some(resolved) = lookup_interface_func(instance, store, &iface, &func)? {
+                return Ok(resolved);
+            }
+        }
+
+        let mut candidates = std::collections::HashSet::new();
+        if let Some(wit) = &self.component.wit {
+            for world in wit.worlds.values() {
+                for export in &world.exports {
+                    if let WitWorldItem::Interface { name, interface } = export {
+                        candidates.insert(name.clone());
+                        if let Some(stripped) = name.split('@').next() {
+                            candidates.insert(stripped.to_string());
+                        }
+                        match interface {
+                            crate::v2::wit::WitInterfaceRef::Local(local_name) => {
+                                candidates.insert(local_name.clone());
+                            }
+                            crate::v2::wit::WitInterfaceRef::External { package, interface } => {
+                                candidates.insert(interface.clone());
+                                let pkg = format!("{}:{}", package.namespace, package.name);
+                                candidates.insert(format!("{}/{}", pkg, interface));
+                                if let Some(version) = &package.version {
+                                    candidates.insert(format!("{}/{}@{}", pkg, interface, version));
+                                    candidates.insert(format!("{}/{}", package.to_string(), interface));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut match_found: Option<wasmtime::component::Func> = None;
+        for iface in candidates {
+            if let Some(resolved) = lookup_interface_func(instance, store, &iface, function)? {
+                if match_found.is_some() {
+                    return Err(Error::ExecutionFailed {
+                        component: self.component_id().to_string(),
+                        reason: format!(
+                            "Function '{}' is ambiguous across exported interfaces",
+                            function
+                        ),
+                    });
+                }
+                match_found = Some(resolved);
+            }
+        }
+
+        if let Some(func) = match_found {
+            return Ok(func);
+        }
+
+        Err(Error::ExecutionFailed {
+            component: self.component_id().to_string(),
+            reason: format!("Function '{}' not found", function),
+        })
     }
 
     #[cfg(not(feature = "v2"))]
@@ -463,6 +529,9 @@ impl ComponentInstance {
         let instance_guard = self.wasmtime_instance.lock().unwrap();
         let instance = instance_guard.as_ref().unwrap();
 
+        let mut return_value = None;
+        let mut exit_code = 0;
+
         if let Some(func) = instance.get_func(&mut *store, "_start") {
             func.call(&mut *store, &[], &mut []).map_err(|e| {
                 self.set_state(InstanceState::Error);
@@ -471,6 +540,65 @@ impl ComponentInstance {
                     reason: e.to_string(),
                 }
             })?;
+        } else {
+            let candidates = [
+                "wasi:cli/run#run",
+                "wasi:cli/run.run",
+                "wasi:cli/run::run",
+                "run",
+            ];
+            let mut resolved = None;
+
+            for candidate in candidates {
+                match self.resolve_component_func(instance, store, candidate) {
+                    Ok(func) => {
+                        resolved = Some(func);
+                        break;
+                    }
+                    Err(Error::ExecutionFailed { reason, .. })
+                        if reason.contains("not found") =>
+                    {
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+
+            let func = resolved.ok_or_else(|| Error::ExecutionFailed {
+                component: self.component_id().to_string(),
+                reason: "No CLI entrypoint found (_start or wasi:cli/run.run)".to_string(),
+            })?;
+
+            let results_len = func.results(&mut *store).len();
+            let mut results: Vec<Val> =
+                std::iter::repeat_with(|| Val::Bool(false))
+                    .take(results_len)
+                    .collect();
+
+            func.call(&mut *store, &[], &mut results).map_err(|e| {
+                self.set_state(InstanceState::Error);
+                Error::ExecutionFailed {
+                    component: self.component_id().to_string(),
+                    reason: e.to_string(),
+                }
+            })?;
+
+            func.post_return(&mut *store)
+                .map_err(|e| Error::ExecutionFailed {
+                    component: self.component_id().to_string(),
+                    reason: format!("Post-return failed: {}", e),
+                })?;
+
+            return_value = if results.is_empty() {
+                None
+            } else if results.len() == 1 {
+                Some(val_to_component_value(&results[0]))
+            } else {
+                Some(ComponentValue::Tuple(
+                    results.iter().map(val_to_component_value).collect(),
+                ))
+            };
+            exit_code = exit_code_from_return_value(&return_value);
         }
 
         self.set_state(InstanceState::Completed);
@@ -478,10 +606,10 @@ impl ComponentInstance {
         let host = store.data();
 
         Ok(CallResult {
-            exit_code: 0,
+            exit_code,
             stdout: host.stdout_buffer.clone(),
             stderr: host.stderr_buffer.clone(),
-            return_value: None,
+            return_value,
         })
     }
 
@@ -801,6 +929,53 @@ fn val_to_component_value(val: &Val) -> ComponentValue {
     }
 }
 
+#[cfg(feature = "v2")]
+fn exit_code_from_return_value(return_value: &Option<ComponentValue>) -> i32 {
+    let Some(value) = return_value else {
+        return 0;
+    };
+
+    match value {
+        ComponentValue::Result { ok: _, err } => err
+            .as_ref()
+            .and_then(|v| v.as_i32())
+            .unwrap_or(0),
+        other => other.as_i32().unwrap_or(0),
+    }
+}
+
+#[cfg(feature = "v2")]
+fn split_function_path(function: &str) -> Option<(String, String)> {
+    if let Some((iface, func)) = function.split_once('#') {
+        return Some((iface.to_string(), func.to_string()));
+    }
+    if let Some((iface, func)) = function.split_once("::") {
+        return Some((iface.to_string(), func.to_string()));
+    }
+    if let Some((iface, func)) = function.split_once('.') {
+        return Some((iface.to_string(), func.to_string()));
+    }
+    None
+}
+
+#[cfg(feature = "v2")]
+fn lookup_interface_func(
+    instance: &Instance,
+    store: &mut Store<WasiHostState>,
+    iface: &str,
+    func: &str,
+) -> Result<Option<wasmtime::component::Func>> {
+    let iface_export = match instance.get_export(&mut *store, None, iface) {
+        Some(idx) => idx,
+        None => return Ok(None),
+    };
+    let func_export = match instance.get_export(&mut *store, Some(&iface_export), func) {
+        Some(idx) => idx,
+        None => return Ok(None),
+    };
+    Ok(instance.get_func(&mut *store, &func_export))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -817,5 +992,70 @@ mod tests {
         let h2 = InstanceHandle::new("test");
         assert_ne!(h1.id, h2.id);
         assert_eq!(h1.component_id, "test");
+    }
+
+    #[test]
+    #[cfg(feature = "v2")]
+    fn test_exit_code_from_return_value() {
+        let err = Some(ComponentValue::Result {
+            ok: None,
+            err: Some(Box::new(ComponentValue::S32(7))),
+        });
+        assert_eq!(exit_code_from_return_value(&err), 7);
+
+        let ok = Some(ComponentValue::Result {
+            ok: Some(Box::new(ComponentValue::Unit)),
+            err: None,
+        });
+        assert_eq!(exit_code_from_return_value(&ok), 0);
+
+        let direct = Some(ComponentValue::S32(3));
+        assert_eq!(exit_code_from_return_value(&direct), 3);
+    }
+
+    #[test]
+    #[cfg(feature = "v2")]
+    fn test_run_cli_wasi_entrypoint() {
+        use crate::v2::runtime::{Capability, CapabilitySet, RuntimeConfig, RuntimeEngine};
+
+        let bytes = build_cli_component_bytes();
+        let mut engine = RuntimeEngine::new(RuntimeConfig::production()).unwrap();
+        let component_id = engine.load_component_bytes("cli-fixture", bytes).unwrap();
+
+        let mut caps = CapabilitySet::deterministic();
+        caps.grant(Capability::Args);
+        let handle = engine.instantiate(&component_id, caps).unwrap();
+
+        let instance = engine.get_instance(&handle).unwrap();
+        let result = instance
+            .run_cli(CliContext {
+                args: vec!["cli-fixture".to_string()],
+                env: vec![],
+                stdin: None,
+                cwd: None,
+            })
+            .unwrap();
+
+        assert_eq!(result.exit_code, 7);
+        assert!(matches!(result.return_value, Some(ComponentValue::S32(7))));
+    }
+
+    #[cfg(feature = "v2")]
+    fn build_cli_component_bytes() -> Vec<u8> {
+        // Minimal component that exports a "run" function returning s32(7).
+        // Our run_cli tries "run" as a fallback entrypoint name.
+        let wat = r#"
+(component
+  (core module $m
+    (func (export "run") (result i32)
+      i32.const 7)
+  )
+  (core instance $i (instantiate $m))
+  (type $run_t (func (result s32)))
+  (func $run (type $run_t) (canon lift (core func $i "run")))
+  (export "run" (func $run))
+)
+"#;
+        wat::parse_str(wat).expect("failed to parse component WAT")
     }
 }

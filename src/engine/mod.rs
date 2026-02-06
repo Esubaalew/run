@@ -26,13 +26,145 @@ mod zig;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::Path;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::process::Child;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 
 use crate::cli::InputSource;
 use crate::language::{LanguageSpec, canonical_language_id};
+
+// ---------------------------------------------------------------------------
+// Compilation cache: hash source code -> reuse compiled binaries
+// ---------------------------------------------------------------------------
+
+use std::sync::LazyLock;
+
+static COMPILE_CACHE: LazyLock<Mutex<CompileCache>> =
+    LazyLock::new(|| Mutex::new(CompileCache::new()));
+
+struct CompileCache {
+    dir: PathBuf,
+    entries: HashMap<u64, PathBuf>,
+}
+
+impl CompileCache {
+    fn new() -> Self {
+        let dir = std::env::temp_dir().join("run-compile-cache");
+        let _ = std::fs::create_dir_all(&dir);
+        Self {
+            dir,
+            entries: HashMap::new(),
+        }
+    }
+
+    fn get(&self, hash: u64) -> Option<&PathBuf> {
+        self.entries.get(&hash).filter(|p| p.exists())
+    }
+
+    fn insert(&mut self, hash: u64, path: PathBuf) {
+        self.entries.insert(hash, path);
+    }
+
+    fn cache_dir(&self) -> &Path {
+        &self.dir
+    }
+}
+
+/// Hash source code for cache lookup.
+pub fn hash_source(source: &str) -> u64 {
+    // Simple FNV-1a hash — fast and good enough for cache keys.
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in source.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+/// Look up a cached binary for the given source hash.
+/// Returns Some(path) if a valid cached binary exists.
+pub fn cache_lookup(source_hash: u64) -> Option<PathBuf> {
+    let cache = COMPILE_CACHE.lock().ok()?;
+    cache.get(source_hash).cloned()
+}
+
+/// Store a compiled binary in the cache. Copies the binary to the cache directory.
+pub fn cache_store(source_hash: u64, binary: &Path) -> Option<PathBuf> {
+    let mut cache = COMPILE_CACHE.lock().ok()?;
+    let suffix = std::env::consts::EXE_SUFFIX;
+    let cached_name = format!("{:016x}{}", source_hash, suffix);
+    let cached_path = cache.cache_dir().join(cached_name);
+    if std::fs::copy(binary, &cached_path).is_ok() {
+        // Ensure executable permission on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&cached_path, std::fs::Permissions::from_mode(0o755));
+        }
+        cache.insert(source_hash, cached_path.clone());
+        Some(cached_path)
+    } else {
+        None
+    }
+}
+
+/// Execute a cached binary, returning the Output. Returns None if no cache entry.
+pub fn try_cached_execution(source_hash: u64) -> Option<std::process::Output> {
+    let cached = cache_lookup(source_hash)?;
+    let mut cmd = std::process::Command::new(&cached);
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .stdin(std::process::Stdio::inherit());
+    cmd.output().ok()
+}
+
+/// Default execution timeout: 60 seconds.
+/// Override with RUN_TIMEOUT_SECS env var.
+pub fn execution_timeout() -> Duration {
+    let secs = std::env::var("RUN_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(60);
+    Duration::from_secs(secs)
+}
+
+/// Wait for a child process with a timeout. Kills the process if it exceeds the limit.
+/// Returns the Output on success, or an error on timeout.
+pub fn wait_with_timeout(
+    mut child: Child,
+    timeout: Duration,
+) -> Result<std::process::Output> {
+    let start = Instant::now();
+    let poll_interval = Duration::from_millis(50);
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(_status)) => {
+                // Process finished — collect output
+                return child.wait_with_output().map_err(Into::into);
+            }
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    let _ = child.wait(); // reap
+                    bail!(
+                        "Execution timed out after {:.1}s (limit: {}s). \
+                         Set RUN_TIMEOUT_SECS to increase.",
+                        start.elapsed().as_secs_f64(),
+                        timeout.as_secs()
+                    );
+                }
+                std::thread::sleep(poll_interval);
+            }
+            Err(e) => {
+                return Err(e.into());
+            }
+        }
+    }
+}
 
 pub use bash::BashEngine;
 pub use c::CEngine;
@@ -294,6 +426,66 @@ impl LanguageRegistry {
         ids.sort();
         ids
     }
+}
+
+/// Returns the package install command for a language, if one exists.
+/// Returns (binary, args_before_package) so the caller can append the package name.
+pub fn package_install_command(language_id: &str) -> Option<(&'static str, &'static [&'static str])> {
+    match language_id {
+        "python" => Some(("pip", &["install"])),
+        "javascript" | "typescript" => Some(("npm", &["install"])),
+        "rust" => Some(("cargo", &["add"])),
+        "go" => Some(("go", &["get"])),
+        "ruby" => Some(("gem", &["install"])),
+        "php" => Some(("composer", &["require"])),
+        "lua" => Some(("luarocks", &["install"])),
+        "dart" => Some(("dart", &["pub", "add"])),
+        "perl" => Some(("cpanm", &[])),
+        "julia" => Some(("julia", &["-e"])),  // special: wraps in Pkg.add()
+        "haskell" => Some(("cabal", &["install"])),
+        "nim" => Some(("nimble", &["install"])),
+        "r" => Some(("Rscript", &["-e"])),  // special: wraps in install.packages()
+        "kotlin" => None, // no standard CLI package manager
+        "java" => None,   // maven/gradle are project-based
+        "c" | "cpp" => None, // system packages
+        "bash" => None,
+        "swift" => None,
+        "crystal" => Some(("shards", &["install"])),
+        "elixir" => None, // mix deps.get is project-based
+        "groovy" => None,
+        "csharp" => Some(("dotnet", &["add", "package"])),
+        "zig" => None,
+        _ => None,
+    }
+}
+
+/// Build a full install command for a package in the given language.
+/// Returns None if the language has no package manager.
+pub fn build_install_command(language_id: &str, package: &str) -> Option<std::process::Command> {
+    let (binary, base_args) = package_install_command(language_id)?;
+
+    let mut cmd = std::process::Command::new(binary);
+
+    match language_id {
+        "julia" => {
+            // julia -e 'using Pkg; Pkg.add("package")'
+            cmd.arg("-e").arg(format!("using Pkg; Pkg.add(\"{package}\")"));
+        }
+        "r" => {
+            // Rscript -e 'install.packages("package", repos="https://cran.r-project.org")'
+            cmd.arg("-e").arg(format!(
+                "install.packages(\"{package}\", repos=\"https://cran.r-project.org\")"
+            ));
+        }
+        _ => {
+            for arg in base_args {
+                cmd.arg(arg);
+            }
+            cmd.arg(package);
+        }
+    }
+
+    Some(cmd)
 }
 
 pub fn default_language() -> &'static str {

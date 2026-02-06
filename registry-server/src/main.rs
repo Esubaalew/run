@@ -424,7 +424,7 @@ struct VersionInfo {
 async fn fetch_all_packages_with_info(db: &SqlitePool) -> Result<Vec<PackageInfo>, sqlx::Error> {
     let rows = sqlx::query(
         r#"SELECT p.name, 
-                  (SELECT version FROM versions WHERE package_id = p.id ORDER BY published_at DESC LIMIT 1) as latest_version,
+                  COALESCE((SELECT version FROM versions WHERE package_id = p.id ORDER BY published_at DESC LIMIT 1), '') as latest_version,
                   p.description,
                   COALESCE((SELECT SUM(downloads) FROM versions WHERE package_id = p.id), 0) as total_downloads
            FROM packages p
@@ -433,13 +433,20 @@ async fn fetch_all_packages_with_info(db: &SqlitePool) -> Result<Vec<PackageInfo
     .fetch_all(db)
     .await?;
     
-    Ok(rows.iter().filter_map(|row| {
-        Some(PackageInfo {
-            name: row.try_get("name").ok()?,
-            latest_version: row.try_get("latest_version").ok()?,
+    Ok(rows.iter().map(|row| {
+        let latest_version: String = row.try_get("latest_version").unwrap_or_default();
+        let latest_version = if latest_version.is_empty() {
+            "N/A".to_string()
+        } else {
+            latest_version
+        };
+
+        PackageInfo {
+            name: row.try_get("name").unwrap_or_default(),
+            latest_version,
             description: row.try_get("description").unwrap_or_default(),
             downloads: row.try_get("total_downloads").unwrap_or(0),
-        })
+        }
     }).collect())
 }
 
@@ -561,41 +568,43 @@ async fn publish_package(
     let mut targets: Option<Vec<String>> = None;
     let mut expected_sha256: Option<String> = None;
 
-    while let Some(field) = multipart.next_field().await.unwrap() {
+    while let Ok(Some(field)) = multipart.next_field().await {
         let field_name = field.name().unwrap_or("").to_string();
         
         match field_name.as_str() {
             "name" => {
-                name = Some(field.text().await.unwrap());
+                name = field.text().await.ok();
             }
             "version" => {
-                version = Some(field.text().await.unwrap());
+                version = field.text().await.ok();
             }
             "description" => {
-                description = field.text().await.unwrap();
+                description = field.text().await.unwrap_or_default();
             }
             "license" => {
-                license = Some(field.text().await.unwrap());
+                license = field.text().await.ok();
             }
             "repository" => {
-                repository = Some(field.text().await.unwrap());
+                repository = field.text().await.ok();
             }
             "wit_url" => {
-                wit_url = Some(field.text().await.unwrap());
+                wit_url = field.text().await.ok();
             }
             "dependencies" => {
-                let raw = field.text().await.unwrap();
-                dependencies = serde_json::from_str(&raw).ok();
+                if let Ok(raw) = field.text().await {
+                    dependencies = serde_json::from_str(&raw).ok();
+                }
             }
             "targets" => {
-                let raw = field.text().await.unwrap();
-                targets = serde_json::from_str(&raw).ok();
+                if let Ok(raw) = field.text().await {
+                    targets = serde_json::from_str(&raw).ok();
+                }
             }
             "sha256" => {
-                expected_sha256 = Some(field.text().await.unwrap());
+                expected_sha256 = field.text().await.ok();
             }
             "component" | "artifact" => {
-                artifact_data = Some(field.bytes().await.unwrap().to_vec());
+                artifact_data = field.bytes().await.ok().map(|b| b.to_vec());
             }
             _ => {}
         }

@@ -203,13 +203,36 @@ fn check_for_changes(
 fn glob_files(base_dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
     let mut results = Vec::new();
 
-    fn walk_dir(dir: &Path, pattern: &str, results: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    fn walk_dir(
+        dir: &Path,
+        base_dir: &Path,
+        pattern: &str,
+        results: &mut Vec<PathBuf>,
+    ) -> std::io::Result<()> {
         if !dir.is_dir() {
             return Ok(());
         }
 
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(err) => {
+                if err.kind() == std::io::ErrorKind::PermissionDenied {
+                    return Ok(());
+                }
+                return Err(err);
+            }
+        };
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => {
+                    if err.kind() == std::io::ErrorKind::PermissionDenied {
+                        continue;
+                    }
+                    return Err(err);
+                }
+            };
             let path = entry.path();
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
@@ -219,10 +242,11 @@ fn glob_files(base_dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
 
             if path.is_dir() {
                 if pattern.contains("**") {
-                    walk_dir(&path, pattern, results)?;
+                    walk_dir(&path, base_dir, pattern, results)?;
                 }
             } else {
-                let rel_path = path.to_string_lossy();
+                let rel_path = path.strip_prefix(base_dir).unwrap_or(&path);
+                let rel_path = rel_path.to_string_lossy();
                 if glob_matches(pattern, &rel_path) {
                     results.push(path);
                 }
@@ -232,7 +256,7 @@ fn glob_files(base_dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
         Ok(())
     }
 
-    walk_dir(base_dir, pattern, &mut results).map_err(|e| Error::Io(e))?;
+    walk_dir(base_dir, base_dir, pattern, &mut results).map_err(|e| Error::Io(e))?;
 
     Ok(results)
 }
@@ -299,6 +323,7 @@ fn glob_match_recursive(pattern: &str, path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_glob_matches() {
@@ -306,5 +331,58 @@ mod tests {
         assert!(glob_matches("src/**/*.rs", "src/lib.rs"));
         assert!(glob_matches("*.wit", "hello.wit"));
         assert!(!glob_matches("*.rs", "main.txt"));
+    }
+
+    #[test]
+    fn test_glob_files_relative() {
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+        std::fs::create_dir_all(base.join("src")).unwrap();
+        std::fs::write(base.join("src/lib.rs"), "fn main() {}").unwrap();
+
+        let files = glob_files(base, "src/**/*.rs").unwrap();
+        assert!(files.iter().any(|p| p.ends_with("src/lib.rs")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_glob_files_permission_denied() {
+        use std::os::unix::fs::PermissionsExt;
+
+        struct PermGuard {
+            path: PathBuf,
+            mode: u32,
+        }
+
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(
+                    &self.path,
+                    std::fs::Permissions::from_mode(self.mode),
+                );
+            }
+        }
+
+        let temp = TempDir::new().unwrap();
+        let base = temp.path();
+        std::fs::create_dir_all(base.join("src")).unwrap();
+        std::fs::write(base.join("src/main.rs"), "fn main() {}").unwrap();
+
+        let secret_dir = base.join("secret");
+        std::fs::create_dir_all(&secret_dir).unwrap();
+        std::fs::write(secret_dir.join("secret.rs"), "fn main() {}").unwrap();
+
+        let original_mode = std::fs::metadata(&secret_dir)
+            .unwrap()
+            .permissions()
+            .mode();
+        let _guard = PermGuard {
+            path: secret_dir.clone(),
+            mode: original_mode,
+        };
+        std::fs::set_permissions(&secret_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let files = glob_files(base, "**/*.rs").unwrap();
+        assert!(files.iter().any(|p| p.ends_with("src/main.rs")));
     }
 }

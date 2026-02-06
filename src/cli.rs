@@ -28,6 +28,18 @@ pub enum Command {
         detect_language: bool,
     },
     ShowVersion,
+    CheckToolchains,
+    Install {
+        language: Option<LanguageSpec>,
+        package: String,
+    },
+    Bench {
+        spec: ExecutionSpec,
+        iterations: u32,
+    },
+    Watch {
+        spec: ExecutionSpec,
+    },
 }
 
 pub fn parse() -> Result<Command> {
@@ -36,6 +48,33 @@ pub fn parse() -> Result<Command> {
     if cli.version {
         return Ok(Command::ShowVersion);
     }
+    if cli.check {
+        return Ok(Command::CheckToolchains);
+    }
+
+    if let Some(pkg) = cli.install.as_ref() {
+        let language = cli
+            .lang
+            .as_ref()
+            .map(|value| LanguageSpec::new(value.to_string()));
+        return Ok(Command::Install {
+            language,
+            package: pkg.clone(),
+        });
+    }
+
+    // Apply --timeout if provided
+    if let Some(secs) = cli.timeout {
+        // SAFETY: called at startup before any threads are spawned
+        unsafe { std::env::set_var("RUN_TIMEOUT_SECS", secs.to_string()) };
+    }
+
+    // Apply --timing if provided
+    if cli.timing {
+        // SAFETY: called at startup before any threads are spawned
+        unsafe { std::env::set_var("RUN_TIMING", "1") };
+    }
+
     if let Some(code) = cli.code.as_ref() {
         ensure!(
             !code.trim().is_empty(),
@@ -143,11 +182,21 @@ pub fn parse() -> Result<Command> {
     }
 
     if let Some(source) = source {
-        return Ok(Command::Execute(ExecutionSpec {
+        let spec = ExecutionSpec {
             language,
             source,
             detect_language,
-        }));
+        };
+        if let Some(n) = cli.bench {
+            return Ok(Command::Bench {
+                spec,
+                iterations: n.max(1),
+            });
+        }
+        if cli.watch {
+            return Ok(Command::Watch { spec });
+        }
+        return Ok(Command::Execute(spec));
     }
 
     Ok(Command::Repl {
@@ -194,6 +243,30 @@ struct Cli {
 
     #[arg(long = "no-detect", action = clap::ArgAction::SetTrue)]
     no_detect: bool,
+
+    /// Maximum execution time in seconds (default: 60, override with RUN_TIMEOUT_SECS)
+    #[arg(long = "timeout", value_name = "SECS")]
+    timeout: Option<u64>,
+
+    /// Show execution timing after each run
+    #[arg(long = "timing", action = clap::ArgAction::SetTrue)]
+    timing: bool,
+
+    /// Check which language toolchains are available
+    #[arg(long = "check", action = clap::ArgAction::SetTrue)]
+    check: bool,
+
+    /// Install a package for a language (use -l to specify language, defaults to python)
+    #[arg(long = "install", value_name = "PACKAGE")]
+    install: Option<String>,
+
+    /// Benchmark: run code N times and report min/max/avg timing
+    #[arg(long = "bench", value_name = "N")]
+    bench: Option<u32>,
+
+    /// Watch a file and re-execute on changes
+    #[arg(short = 'w', long = "watch", action = clap::ArgAction::SetTrue)]
+    watch: bool,
 
     #[arg(value_name = "ARGS", trailing_var_arg = true)]
     args: Vec<String>,
