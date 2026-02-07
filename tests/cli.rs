@@ -69,7 +69,7 @@ fn java_inline_with_imports() {
         .args(["--lang", "java", "--code", code])
         .assert()
         .success()
-        .stdout(predicate::str::contains("[Java] inline import OK"));
+        .stdout(norm_contains("[Java] inline import OK"));
 }
 
 fn php_available() -> bool {
@@ -94,7 +94,7 @@ fn kotlin_stdin_with_imports_and_loop() {
         .write_stdin(code)
         .assert()
         .success()
-        .stdout(predicate::str::contains("[Kotlin] Sum:"));
+        .stdout(norm_contains("[Kotlin] Sum:"));
 }
 
 fn dart_available() -> bool {
@@ -142,6 +142,15 @@ fn run_binary() -> assert_cmd::Command {
     assert_cmd::Command::cargo_bin("run").expect("binary built")
 }
 
+fn norm(s: &str) -> String {
+    s.replace("\r\n", "\n")
+}
+
+fn norm_contains(needle: &str) -> impl predicates::Predicate<str> {
+    let needle = needle.to_string();
+    predicates::function::function(move |s: &str| norm(s).contains(needle.as_str()))
+}
+
 #[test]
 fn inline_python_execution() {
     if !python_available() {
@@ -153,7 +162,7 @@ fn inline_python_execution() {
         .args(["--lang", "python", "--code", "print('hello from inline')"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("hello from inline\n"));
+        .stdout(norm_contains("hello from inline\n"));
 }
 
 #[test]
@@ -170,7 +179,7 @@ fn python_short_code_flag_reads_stdin() {
         .write_stdin("{\"name\":\"Ada\",\"age\":32}\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Ada is 32 years old\n"));
+        .stdout(norm_contains("Ada is 32 years old\n"));
 }
 
 #[test]
@@ -184,7 +193,7 @@ fn inline_bash_execution() {
         .args(["--lang", "bash", "--code", "echo inline-bash"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-bash\n"));
+        .stdout(norm_contains("inline-bash\n"));
 }
 
 #[test]
@@ -204,7 +213,7 @@ fn bash_file_execution() {
         .args(["bash", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from-file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from-file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -220,7 +229,7 @@ fn bash_stdin_execution() {
         .write_stdin("echo stdin-bash\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-bash\n"));
+        .stdout(norm_contains("stdin-bash\n"));
 }
 
 #[test]
@@ -234,7 +243,7 @@ fn inline_javascript_execution() {
         .args(["--lang", "javascript", "--code", "console.log('inline-js')"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-js\n"));
+        .stdout(norm_contains("inline-js\n"));
 }
 
 #[test]
@@ -258,7 +267,7 @@ fn javascript_file_execution() {
         .args(["javascript", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -273,7 +282,7 @@ fn javascript_stdin_execution() {
         .write_stdin("console.log('stdin-js')\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-js\n"));
+        .stdout(norm_contains("stdin-js\n"));
 }
 
 #[test]
@@ -287,7 +296,7 @@ fn inline_ruby_execution() {
         .args(["--lang", "ruby", "--code", "puts 'inline-ruby'"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-ruby\n"));
+        .stdout(norm_contains("inline-ruby\n"));
 }
 
 #[test]
@@ -307,7 +316,7 @@ fn ruby_file_execution() {
         .args(["ruby", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -322,7 +331,7 @@ fn ruby_stdin_execution() {
         .write_stdin("puts 'stdin-ruby'\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-ruby\n"));
+        .stdout(norm_contains("stdin-ruby\n"));
 }
 
 #[test]
@@ -336,7 +345,7 @@ fn inline_groovy_execution() {
         .args(["--lang", "groovy", "--code", "println 'inline-groovy'"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-groovy\n"));
+        .stdout(norm_contains("inline-groovy\n"));
 }
 
 #[test]
@@ -356,7 +365,7 @@ fn groovy_file_execution() {
         .args(["groovy", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -371,7 +380,7 @@ fn groovy_stdin_execution() {
         .write_stdin("println 'stdin-groovy'\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-groovy\n"));
+        .stdout(norm_contains("stdin-groovy\n"));
 }
 
 #[test]
@@ -391,7 +400,7 @@ doubled       // last line evaluates to [4, 8]\n";
         .write_stdin(code)
         .assert()
         .success()
-        .stdout(predicate::str::contains("[4, 8]\n"));
+        .stdout(norm_contains("[4, 8]\n"));
 }
 
 #[test]
@@ -473,7 +482,7 @@ fn inline_typescript_execution() {
         .args(["--lang", "typescript", "--code", "console.log('inline-ts')"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-ts\n"));
+        .stdout(norm_contains("inline-ts\n"));
 }
 
 #[test]
@@ -494,7 +503,7 @@ fn typescript_file_execution() {
         .args(["typescript", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -509,7 +518,7 @@ fn typescript_stdin_execution() {
         .write_stdin("console.log('stdin-ts')\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-ts\n"));
+        .stdout(norm_contains("stdin-ts\n"));
 }
 
 #[test]
@@ -556,7 +565,7 @@ fn inline_rust_execution() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-rust\n"));
+        .stdout(norm_contains("inline-rust\n"));
 }
 
 #[test]
@@ -577,7 +586,7 @@ fn rust_file_execution() {
         .args(["rust", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -592,7 +601,7 @@ fn rust_stdin_execution() {
         .write_stdin("fn main() { println!(\"stdin-rust\"); }\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-rust\n"));
+        .stdout(norm_contains("stdin-rust\n"));
 }
 
 #[test]
@@ -904,7 +913,7 @@ fn inline_go_execution() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-go\n"));
+        .stdout(norm_contains("inline-go\n"));
 }
 
 #[test]
@@ -929,7 +938,7 @@ fn go_file_execution() {
         .args(["go", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -944,7 +953,7 @@ fn go_stdin_execution() {
         .write_stdin("package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"stdin-go\") }\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-go\n"));
+        .stdout(norm_contains("stdin-go\n"));
 }
 
 #[test]
@@ -1004,7 +1013,7 @@ fn inline_csharp_execution() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-csharp\n"));
+        .stdout(norm_contains("inline-csharp\n"));
 }
 
 #[test]
@@ -1025,7 +1034,7 @@ fn csharp_file_execution() {
         .args(["csharp", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1042,7 +1051,7 @@ fn csharp_stdin_execution() {
         )
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-csharp\n"));
+        .stdout(norm_contains("stdin-csharp\n"));
 }
 
 #[test]
@@ -1063,9 +1072,7 @@ fn python_file_execution() {
         .args(["py", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(
-            predicate::str::contains("from file execution\n").and(predicate::str::contains("42\n")),
-        );
+        .stdout(norm_contains("from file execution\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1080,7 +1087,7 @@ fn python_stdin_execution() {
         .write_stdin("print('stream hello')\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stream hello\n"));
+        .stdout(norm_contains("stream hello\n"));
 }
 
 #[test]
@@ -1137,7 +1144,7 @@ fn inline_lua_execution() {
         .args(["--lang", "lua", "--code", "print(\"inline-lua\")"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-lua\n"));
+        .stdout(norm_contains("inline-lua\n"));
 }
 
 #[test]
@@ -1158,7 +1165,7 @@ fn lua_file_execution() {
         .args(["lua", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1173,7 +1180,7 @@ fn lua_stdin_execution() {
         .write_stdin("print(\"stdin-lua\")\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-lua\n"));
+        .stdout(norm_contains("stdin-lua\n"));
 }
 
 #[test]
@@ -1216,7 +1223,7 @@ fn inline_c_execution() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-c\n"));
+        .stdout(norm_contains("inline-c\n"));
 }
 
 #[test]
@@ -1235,7 +1242,7 @@ fn inline_c_execution_with_literal_newlines() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("escaped inline-c\n"));
+        .stdout(norm_contains("escaped inline-c\n"));
 }
 
 #[test]
@@ -1260,7 +1267,7 @@ fn c_file_execution() {
         .args(["c", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1275,7 +1282,7 @@ fn c_stdin_execution() {
         .write_stdin("#include <stdio.h>\nint main(void) { printf(\"stdin-c\\n\"); return 0; }\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-c\n"));
+        .stdout(norm_contains("stdin-c\n"));
 }
 
 #[test]
@@ -1354,7 +1361,7 @@ fn inline_cpp_execution() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-cpp\n"));
+        .stdout(norm_contains("inline-cpp\n"));
 }
 
 #[test]
@@ -1373,7 +1380,7 @@ fn inline_cpp_execution_with_literal_newlines() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("escaped inline-cpp\n"));
+        .stdout(norm_contains("escaped inline-cpp\n"));
 }
 
 #[test]
@@ -1398,7 +1405,7 @@ fn cpp_file_execution() {
         .args(["cpp", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1415,7 +1422,7 @@ fn cpp_stdin_execution() {
         )
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-cpp\n"));
+        .stdout(norm_contains("stdin-cpp\n"));
 }
 
 #[test]
@@ -1434,7 +1441,7 @@ fn inline_java_execution() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-java\n"));
+        .stdout(norm_contains("inline-java\n"));
 }
 
 #[test]
@@ -1456,7 +1463,7 @@ fn java_file_execution() {
         .args(["java", file_path.to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1471,7 +1478,7 @@ fn java_stdin_execution() {
         .write_stdin("System.out.println(\"stdin-java\");\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-java\n"));
+        .stdout(norm_contains("stdin-java\n"));
 }
 
 #[test]
@@ -1485,7 +1492,7 @@ fn inline_php_execution() {
         .args(["--lang", "php", "--code", "echo \"inline-php\\n\";"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-php\n"));
+        .stdout(norm_contains("inline-php\n"));
 }
 
 #[test]
@@ -1506,7 +1513,7 @@ fn php_file_execution() {
         .args(["php", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1521,7 +1528,7 @@ fn php_stdin_execution() {
         .write_stdin("echo \"stdin-php\\n\";\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-php\n"));
+        .stdout(norm_contains("stdin-php\n"));
 }
 
 #[test]
@@ -1573,7 +1580,7 @@ fn inline_kotlin_execution() {
         .args(["--lang", "kotlin", "--code", "println(\"inline-kotlin\")"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-kotlin\n"));
+        .stdout(norm_contains("inline-kotlin\n"));
 }
 
 #[test]
@@ -1595,7 +1602,7 @@ fn kotlin_file_execution() {
         .args(["kotlin", file_path.to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1610,7 +1617,7 @@ fn kotlin_stdin_execution() {
         .write_stdin("println(\"stdin-kotlin\")\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-kotlin\n"));
+        .stdout(norm_contains("stdin-kotlin\n"));
 }
 
 #[test]
@@ -1624,7 +1631,7 @@ fn inline_r_execution() {
         .args(["--lang", "r", "--code", r#"cat("inline-r\n")"#])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-r\n"));
+        .stdout(norm_contains("inline-r\n"));
 }
 
 #[test]
@@ -1643,7 +1650,7 @@ fn r_file_execution() {
         .args(["r", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1658,7 +1665,7 @@ fn r_stdin_execution() {
         .write_stdin("cat('stdin-r\\n')\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-r\n"));
+        .stdout(norm_contains("stdin-r\n"));
 }
 
 #[test]
@@ -1702,7 +1709,7 @@ fn inline_dart_execution() {
         .args(["--lang", "dart", "--code", "print('inline-dart');"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-dart\n"));
+        .stdout(norm_contains("inline-dart\n"));
 }
 
 #[test]
@@ -1724,7 +1731,7 @@ fn dart_file_execution() {
         .args(["dart", file_path.to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1739,7 +1746,7 @@ fn dart_stdin_execution() {
         .write_stdin("print('stdin-dart');\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-dart\n"));
+        .stdout(norm_contains("stdin-dart\n"));
 }
 
 #[test]
@@ -1785,7 +1792,7 @@ fn inline_swift_execution() {
         .args(["--lang", "swift", "--code", "print(\"inline-swift\")"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-swift\n"));
+        .stdout(norm_contains("inline-swift\n"));
 }
 
 #[test]
@@ -1806,7 +1813,7 @@ fn swift_file_execution() {
         .args(["swift", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1851,7 +1858,7 @@ fn inline_perl_execution() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-perl\n"));
+        .stdout(norm_contains("inline-perl\n"));
 }
 
 #[test]
@@ -1872,7 +1879,7 @@ fn perl_file_execution() {
         .args(["perl", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1912,7 +1919,7 @@ fn inline_julia_execution() {
         .args(["--lang", "julia", "--code", "println(\"inline-julia\")"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-julia\n"));
+        .stdout(norm_contains("inline-julia\n"));
 }
 
 #[test]
@@ -1933,7 +1940,7 @@ fn julia_file_execution() {
         .args(["julia", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -1978,7 +1985,7 @@ fn inline_haskell_execution() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-haskell\n"));
+        .stdout(norm_contains("inline-haskell\n"));
 }
 
 #[test]
@@ -2018,7 +2025,7 @@ fn inline_elixir_execution() {
         .args(["--lang", "elixir", "--code", "IO.puts(\"inline-elixir\")"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-elixir\n"));
+        .stdout(norm_contains("inline-elixir\n"));
 }
 
 #[test]
@@ -2062,7 +2069,7 @@ fn inline_crystal_execution() {
         .args(["--lang", "crystal", "--code", r#"puts "inline-crystal""#])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-crystal\n"));
+        .stdout(norm_contains("inline-crystal\n"));
 }
 
 #[test]
@@ -2083,7 +2090,7 @@ fn crystal_file_execution() {
         .args(["crystal", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -2098,7 +2105,7 @@ fn crystal_stdin_execution() {
         .write_stdin("puts \"stdin-crystal\"\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-crystal\n"));
+        .stdout(norm_contains("stdin-crystal\n"));
 }
 
 #[test]
@@ -2147,7 +2154,7 @@ pub fn main() void {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-zig\n"));
+        .stdout(norm_contains("inline-zig\n"));
 }
 
 #[test]
@@ -2168,7 +2175,7 @@ fn zig_file_execution() {
         .args(["zig", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -2185,7 +2192,7 @@ fn zig_stdin_execution() {
         )
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-zig\n"));
+        .stdout(norm_contains("stdin-zig\n"));
 }
 
 #[test]
@@ -2262,7 +2269,7 @@ fn inline_nim_execution() {
         .args(["--lang", "nim", "--code", "echo \"inline-nim\""])
         .assert()
         .success()
-        .stdout(predicate::str::contains("inline-nim\n"));
+        .stdout(norm_contains("inline-nim\n"));
 }
 
 #[test]
@@ -2279,7 +2286,7 @@ fn nim_file_execution() {
         .args(["nim", script.path().to_str().expect("path utf8")])
         .assert()
         .success()
-        .stdout(predicate::str::contains("from file\n").and(predicate::str::contains("42\n")));
+        .stdout(norm_contains("from file\n").and(norm_contains("42\n")));
 }
 
 #[test]
@@ -2294,7 +2301,7 @@ fn nim_stdin_execution() {
         .write_stdin("echo \"stdin-nim\"\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains("stdin-nim\n"));
+        .stdout(norm_contains("stdin-nim\n"));
 }
 
 #[test]
