@@ -128,11 +128,24 @@ impl LanguageEngine for ZigEngine {
             let src_hash = hash_source(&snippet);
             if let Some(output) = try_cached_execution(src_hash) {
                 let start = Instant::now();
+                let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+                let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+                if output.status.success() && !stderr.contains("error:") {
+                    if stdout.is_empty() {
+                        stdout = stderr.clone();
+                    } else if !stderr.is_empty() {
+                        stdout.push_str(&stderr);
+                    }
+                }
                 return Ok(ExecutionOutcome {
                     language: self.id().to_string(),
                     exit_code: output.status.code(),
-                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    stdout,
+                    stderr: if output.status.success() && !stderr.contains("error:") {
+                        String::new()
+                    } else {
+                        stderr
+                    },
                     duration: start.elapsed(),
                 });
             }
@@ -184,11 +197,24 @@ impl LanguageEngine for ZigEngine {
                     .stdin(Stdio::inherit());
                 if let Ok(output) = run_cmd.output() {
                     drop(temp_dir);
+                    let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+                    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+                    if output.status.success() && !stderr.contains("error:") {
+                        if stdout.is_empty() {
+                            stdout = stderr.clone();
+                        } else if !stderr.is_empty() {
+                            stdout.push_str(&stderr);
+                        }
+                    }
                     return Ok(ExecutionOutcome {
                         language: self.id().to_string(),
                         exit_code: output.status.code(),
-                        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                        stdout,
+                        stderr: if output.status.success() && !stderr.contains("error:") {
+                            String::new()
+                        } else {
+                            stderr
+                        },
                         duration: start.elapsed(),
                     });
                 }

@@ -203,7 +203,7 @@ pub fn parse() -> Result<Command> {
             _ => {
                 let mut all_tokens = Vec::with_capacity(trailing.len() + 1);
                 all_tokens.push(first);
-                all_tokens.extend(trailing.drain(..));
+                all_tokens.append(&mut trailing);
                 let (code_tokens, extra_args) = split_at_double_dash(&all_tokens);
                 let joined = join_tokens(&code_tokens);
                 source = Some(InputSource::Inline(joined));

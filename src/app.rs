@@ -244,8 +244,7 @@ fn install_package(language: &LanguageSpec, package: &str) -> Result<i32> {
             Ok(1)
         }
         Err(err) => {
-            return Err(err)
-                .with_context(|| format!("failed to run package manager for {lang_id}"));
+            Err(err).with_context(|| format!("failed to run package manager for {lang_id}"))
         }
     }
 }

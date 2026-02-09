@@ -984,8 +984,8 @@ fn python_dedent_one_level(indent: &str) -> String {
     if indent.is_empty() {
         return String::new();
     }
-    if indent.ends_with('\t') {
-        return indent[..indent.len() - 1].to_string();
+    if let Some(stripped) = indent.strip_suffix('\t') {
+        return stripped.to_string();
     }
     let mut trimmed = indent.to_string();
     let mut removed = 0usize;
