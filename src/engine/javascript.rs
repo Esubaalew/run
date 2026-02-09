@@ -9,7 +9,7 @@ use std::thread;
 
 use super::{
     ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, execution_timeout,
-    wait_with_timeout,
+    run_version_command, wait_with_timeout,
 };
 
 pub struct JavascriptEngine {
@@ -66,14 +66,23 @@ impl LanguageEngine for JavascriptEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", self.binary().display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let mut cmd = self.run_command();
+        cmd.arg("--version");
+        let context = format!("{}", self.binary().display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
         let timeout = execution_timeout();
+        let args = payload.args();
         let output = match payload {
-            ExecutionPayload::Inline { code } => {
+            ExecutionPayload::Inline { code, .. } => {
                 let mut cmd = self.run_command();
                 cmd.arg("-e")
                     .arg(code)
+                    .args(args)
                     .stdin(Stdio::inherit())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
@@ -82,9 +91,10 @@ impl LanguageEngine for JavascriptEngine {
                     .with_context(|| format!("failed to start {}", self.binary().display()))?;
                 wait_with_timeout(child, timeout)?
             }
-            ExecutionPayload::File { path } => {
+            ExecutionPayload::File { path, .. } => {
                 let mut cmd = self.run_command();
                 cmd.arg(path)
+                    .args(args)
                     .stdin(Stdio::inherit())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
@@ -93,9 +103,10 @@ impl LanguageEngine for JavascriptEngine {
                     .with_context(|| format!("failed to start {}", self.binary().display()))?;
                 wait_with_timeout(child, timeout)?
             }
-            ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Stdin { code, .. } => {
                 let mut cmd = self.run_command();
                 cmd.arg("-")
+                    .args(args)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());

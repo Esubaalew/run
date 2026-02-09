@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
 
 pub struct PhpEngine {
     interpreter: Option<PathBuf>,
@@ -52,10 +52,11 @@ impl PhpEngine {
         Ok((dir, path))
     }
 
-    fn run_script(&self, script: &Path) -> Result<std::process::Output> {
+    fn run_script(&self, script: &Path, args: &[String]) -> Result<std::process::Output> {
         let interpreter = self.ensure_interpreter()?;
         let mut cmd = Command::new(interpreter);
         cmd.arg(script)
+            .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         cmd.stdin(Stdio::inherit());
@@ -100,17 +101,25 @@ impl LanguageEngine for PhpEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", interpreter.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let interpreter = self.ensure_interpreter()?;
+        let mut cmd = Command::new(interpreter);
+        cmd.arg("-v");
+        let context = format!("{}", interpreter.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
         let (temp_dir, script_path) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 let (dir, path) = self.write_temp_script(code)?;
                 (Some(dir), path)
             }
-            ExecutionPayload::File { path } => (None, path.clone()),
+            ExecutionPayload::File { path, .. } => (None, path.clone()),
         };
 
-        let output = self.run_script(&script_path)?;
+        let output = self.run_script(&script_path, payload.args())?;
         drop(temp_dir);
 
         Ok(ExecutionOutcome {

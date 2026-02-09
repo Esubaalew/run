@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
 
 pub struct SwiftEngine {
     executable: Option<PathBuf>,
@@ -53,10 +53,13 @@ impl SwiftEngine {
         Ok((dir, path))
     }
 
-    fn execute_path(&self, path: &Path) -> Result<std::process::Output> {
+    fn execute_path(&self, path: &Path, args: &[String]) -> Result<std::process::Output> {
         let executable = self.ensure_executable()?;
         let mut cmd = Command::new(executable);
-        cmd.arg(path).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.arg(path)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         cmd.stdin(Stdio::inherit());
         if let Some(parent) = path.parent() {
             cmd.current_dir(parent);
@@ -101,17 +104,25 @@ impl LanguageEngine for SwiftEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", executable.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let executable = self.ensure_executable()?;
+        let mut cmd = Command::new(executable);
+        cmd.arg("--version");
+        let context = format!("{}", executable.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
         let (temp_dir, path) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 let (dir, path) = self.write_temp_source(code)?;
                 (Some(dir), path)
             }
-            ExecutionPayload::File { path } => (None, path.clone()),
+            ExecutionPayload::File { path, .. } => (None, path.clone()),
         };
 
-        let output = self.execute_path(&path)?;
+        let output = self.execute_path(&path, payload.args())?;
         drop(temp_dir);
 
         Ok(ExecutionOutcome {

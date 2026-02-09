@@ -2335,7 +2335,7 @@ dependencies = [
 
 [[package]]
 name = "run-kit"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2358,6 +2358,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "shell-words",
  "syntect",
  "tempfile",
  "thiserror 1.0.69",
@@ -2630,6 +2631,12 @@ dependencies = [
  "cpufeatures",
  "digest",
 ]
+
+[[package]]
+name = "shell-words"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 
 [[package]]
 name = "shellexpand"

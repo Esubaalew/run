@@ -1,6 +1,6 @@
 [package]
 name = "run-kit"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2024"
 description = "Universal multi-language runner and smart REPL"
 license = "Apache-2.0"
@@ -53,6 +53,7 @@ serde_json = "1.0"
 which = "6.0"
 tempfile = "3.10"
 syntect = "5.2"
+shell-words = "1.1"
 
 # Run 2.0 dependencies
 thiserror = "1.0"

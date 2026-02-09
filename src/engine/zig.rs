@@ -8,7 +8,7 @@ use tempfile::{Builder, TempDir};
 
 use super::{
     ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store, hash_source,
-    try_cached_execution,
+    run_version_command, try_cached_execution,
 };
 
 pub struct ZigEngine {
@@ -52,13 +52,16 @@ impl ZigEngine {
         Ok((dir, path))
     }
 
-    fn run_source(&self, source: &Path) -> Result<std::process::Output> {
+    fn run_source(&self, source: &Path, args: &[String]) -> Result<std::process::Output> {
         let executable = self.ensure_executable()?;
         let mut cmd = Command::new(executable);
         cmd.arg("run")
             .arg(source)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if !args.is_empty() {
+            cmd.arg("--").args(args);
+        }
         cmd.stdin(Stdio::inherit());
         if let Some(dir) = source.parent() {
             cmd.current_dir(dir);
@@ -103,10 +106,20 @@ impl LanguageEngine for ZigEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", executable.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let executable = self.ensure_executable()?;
+        let mut cmd = Command::new(executable);
+        cmd.arg("version");
+        let context = format!("{}", executable.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
+        let args = payload.args();
+
         // Try cache for inline/stdin payloads
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 Some(code.as_str())
             }
             _ => None,
@@ -127,13 +140,13 @@ impl LanguageEngine for ZigEngine {
 
         let start = Instant::now();
         let (temp_dir, source_path, cache_key) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 let snippet = wrap_inline_snippet(code);
                 let h = hash_source(&snippet);
                 let (dir, path) = self.write_temp_source(&snippet)?;
                 (Some(dir), path, Some(h))
             }
-            ExecutionPayload::File { path } => {
+            ExecutionPayload::File { path, .. } => {
                 if path.extension().and_then(|e| e.to_str()) != Some("zig") {
                     let code = std::fs::read_to_string(path)?;
                     let (dir, new_path) = self.write_temp_source(&code)?;
@@ -165,6 +178,7 @@ impl LanguageEngine for ZigEngine {
                 cache_store(h, &bin_path);
                 let mut run_cmd = Command::new(&bin_path);
                 run_cmd
+                    .args(args)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .stdin(Stdio::inherit());
@@ -182,7 +196,7 @@ impl LanguageEngine for ZigEngine {
         }
 
         // Fallback to zig run
-        let output = self.run_source(&source_path)?;
+        let output = self.run_source(&source_path, args)?;
         drop(temp_dir);
 
         let mut combined_stdout = String::from_utf8_lossy(&output.stdout).into_owned();

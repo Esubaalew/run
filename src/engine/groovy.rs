@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
 
 pub struct GroovyEngine {
     executable: Option<PathBuf>,
@@ -65,14 +65,23 @@ impl LanguageEngine for GroovyEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", binary.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let binary = self.ensure_binary()?;
+        let mut cmd = Command::new(binary);
+        cmd.arg("--version");
+        let context = format!("{}", binary.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let binary = self.ensure_binary()?;
         let start = Instant::now();
+        let args = payload.args();
         let output = match payload {
-            ExecutionPayload::Inline { code } => {
+            ExecutionPayload::Inline { code, .. } => {
                 let prepared = prepare_groovy_source(code);
                 let mut cmd = Command::new(binary);
-                cmd.arg("-e").arg(prepared.as_ref());
+                cmd.arg("-e").arg(prepared.as_ref()).args(args);
                 cmd.stdin(Stdio::inherit());
                 cmd.output().with_context(|| {
                     format!(
@@ -81,9 +90,9 @@ impl LanguageEngine for GroovyEngine {
                     )
                 })
             }
-            ExecutionPayload::File { path } => {
+            ExecutionPayload::File { path, .. } => {
                 let mut cmd = Command::new(binary);
-                cmd.arg(path);
+                cmd.arg(path).args(args);
                 cmd.stdin(Stdio::inherit());
                 cmd.output().with_context(|| {
                     format!(
@@ -93,7 +102,7 @@ impl LanguageEngine for GroovyEngine {
                     )
                 })
             }
-            ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Stdin { code, .. } => {
                 let mut script = Builder::new()
                     .prefix("run-groovy-stdin")
                     .suffix(".groovy")
@@ -110,7 +119,7 @@ impl LanguageEngine for GroovyEngine {
 
                 let script_path = script.path().to_path_buf();
                 let mut cmd = Command::new(binary);
-                cmd.arg(&script_path);
+                cmd.arg(&script_path).args(args);
                 cmd.stdin(Stdio::null());
                 let output = cmd.output().with_context(|| {
                     format!(

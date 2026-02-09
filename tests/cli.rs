@@ -166,6 +166,62 @@ fn inline_python_execution() {
 }
 
 #[test]
+fn inline_python_positional_with_backslash() {
+    if !python_available() {
+        eprintln!("skipping python positional inline test: python interpreter not available");
+        return;
+    }
+
+    run_binary()
+        .args(["python", "print('positional\\\\n')"])
+        .assert()
+        .success()
+        .stdout(norm_contains("positional\\n"));
+}
+
+#[test]
+fn inline_python_positional_with_division() {
+    if !python_available() {
+        eprintln!("skipping python positional division test: python interpreter not available");
+        return;
+    }
+
+    run_binary()
+        .args(["python", "print(10 / 2)"])
+        .assert()
+        .success()
+        .stdout(norm_contains("5.0\n"));
+}
+
+#[test]
+fn python_file_arguments() {
+    if !python_available() {
+        eprintln!("skipping python file args test: python interpreter not available");
+        return;
+    }
+
+    let mut script = tempfile::Builder::new()
+        .suffix(".py")
+        .tempfile()
+        .expect("temp file");
+    writeln!(
+        script,
+        "import sys\nprint(\"hello {{}}\".format(\" \".join(sys.argv[1:])))"
+    )
+    .expect("write file");
+
+    run_binary()
+        .args([
+            script.path().to_str().expect("path utf8"),
+            "Alice",
+            "Bob",
+        ])
+        .assert()
+        .success()
+        .stdout(norm_contains("hello Alice Bob\n"));
+}
+
+#[test]
 fn python_short_code_flag_reads_stdin() {
     if !python_available() {
         eprintln!("skipping python -c stdin test: python interpreter not available");

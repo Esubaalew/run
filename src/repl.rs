@@ -13,10 +13,10 @@ use rustyline::{Editor, Helper};
 
 use crate::engine::{
     ExecutionOutcome, ExecutionPayload, LanguageRegistry, LanguageSession, build_install_command,
-    package_install_command,
 };
 use crate::highlight;
 use crate::language::LanguageSpec;
+use crate::output;
 
 const HISTORY_FILE: &str = ".run_history";
 
@@ -594,12 +594,26 @@ pub fn run_repl(
             Some(p) => p.prompt(),
             None => state.prompt(),
         };
+        let mut pending_indent: Option<String> = None;
+        if let Some(p) = pending.as_ref()
+            && state.current_language().canonical_id() == "python"
+        {
+            let indent = python_prompt_indent(p.buffer());
+            if !indent.is_empty() {
+                pending_indent = Some(indent);
+            }
+        }
 
         if let Some(helper) = editor.helper_mut() {
             helper.update_language(state.current_language().canonical_id().to_string());
         }
 
-        match editor.readline(&prompt) {
+        let line_result = match pending_indent.as_deref() {
+            Some(indent) => editor.readline_with_initial(&prompt, (indent, "")),
+            None => editor.readline(&prompt),
+        };
+
+        match line_result {
             Ok(line) => {
                 let raw = line.trim_end_matches(['\r', '\n']);
 
@@ -609,7 +623,11 @@ pub fn run_repl(
                         continue;
                     }
 
-                    p.push_line_auto(state.current_language().canonical_id(), raw);
+                    p.push_line_auto_with_indent(
+                        state.current_language().canonical_id(),
+                        raw,
+                        pending_indent.as_deref(),
+                    );
                     if p.needs_more_input(state.current_language().canonical_id()) {
                         continue;
                     }
@@ -701,15 +719,29 @@ impl PendingInput {
         "... ".to_string()
     }
 
+    fn buffer(&self) -> &str {
+        &self.buf
+    }
+
     fn push_line(&mut self, line: &str) {
         self.buf.push_str(line);
         self.buf.push('\n');
     }
 
+    #[cfg(test)]
     fn push_line_auto(&mut self, language_id: &str, line: &str) {
+        self.push_line_auto_with_indent(language_id, line, None);
+    }
+
+    fn push_line_auto_with_indent(
+        &mut self,
+        language_id: &str,
+        line: &str,
+        expected_indent: Option<&str>,
+    ) {
         match language_id {
             "python" | "py" | "python3" | "py3" => {
-                let adjusted = python_auto_indent(line, &self.buf);
+                let adjusted = python_auto_indent_with_expected(line, &self.buf, expected_indent);
                 self.push_line(&adjusted);
             }
             _ => self.push_line(line),
@@ -746,6 +778,9 @@ fn generic_line_looks_incomplete(code: &str) -> bool {
     let Some(line) = last else { return false };
     let line = line.trim();
     if line.is_empty() {
+        return false;
+    }
+    if line.starts_with('#') {
         return false;
     }
 
@@ -849,15 +884,21 @@ fn is_python_block_header(line: &str) -> bool {
 }
 
 fn python_auto_indent(line: &str, existing: &str) -> String {
+    python_auto_indent_with_expected(line, existing, None)
+}
+
+fn python_auto_indent_with_expected(
+    line: &str,
+    existing: &str,
+    expected_indent: Option<&str>,
+) -> String {
     let trimmed = line.trim_end_matches(['\r', '\n']);
     let raw = trimmed;
     if raw.trim().is_empty() {
         return raw.to_string();
     }
 
-    if raw.starts_with(' ') || raw.starts_with('\t') {
-        return raw.to_string();
-    }
+    let (raw_indent, raw_content) = split_indent(raw);
 
     let mut last_nonempty: Option<&str> = None;
     for l in existing.lines().rev() {
@@ -872,26 +913,117 @@ fn python_auto_indent(line: &str, existing: &str) -> String {
         return raw.to_string();
     };
     let prev_trimmed = prev.trim_end();
-
-    if !prev_trimmed.ends_with(':') {
-        return raw.to_string();
-    }
-
-    let lowered = raw.trim().to_ascii_lowercase();
-    if lowered.starts_with("else:")
-        || lowered.starts_with("elif ")
-        || lowered.starts_with("except")
-        || lowered.starts_with("finally:")
-    {
-        return raw.to_string();
-    }
-
-    let base_indent = prev
+    let prev_indent = prev
         .chars()
         .take_while(|c| *c == ' ' || *c == '\t')
         .collect::<String>();
 
-    format!("{base_indent}    {raw}")
+    let lowered = raw.trim().to_ascii_lowercase();
+    let is_dedent_keyword = lowered.starts_with("else:")
+        || lowered.starts_with("elif ")
+        || lowered.starts_with("except")
+        || lowered.starts_with("finally:")
+        || lowered.starts_with("return")
+        || lowered.starts_with("yield")
+        || lowered == "return"
+        || lowered == "yield";
+    let suggested = if lowered.starts_with("else:")
+        || lowered.starts_with("elif ")
+        || lowered.starts_with("except")
+        || lowered.starts_with("finally:")
+    {
+        if prev_indent.is_empty() {
+            None
+        } else {
+            Some(python_dedent_one_level(&prev_indent))
+        }
+    } else if lowered.starts_with("return")
+        || lowered.starts_with("yield")
+        || lowered == "return"
+        || lowered == "yield"
+    {
+        python_last_def_indent(existing).map(|indent| format!("{indent}    "))
+    } else if is_python_block_header(prev_trimmed.trim()) && prev_trimmed.ends_with(':') {
+        Some(format!("{prev_indent}    "))
+    } else if !prev_indent.is_empty() {
+        Some(prev_indent)
+    } else {
+        None
+    };
+
+    if let Some(indent) = suggested {
+        if let Some(expected) = expected_indent {
+            if raw_indent.len() < expected.len() {
+                return raw.to_string();
+            }
+            if is_dedent_keyword
+                && raw_indent.len() == expected.len()
+                && raw_indent.len() > indent.len()
+            {
+                return format!("{indent}{raw_content}");
+            }
+        }
+        if raw_indent.len() < indent.len() {
+            return format!("{indent}{raw_content}");
+        }
+    }
+
+    raw.to_string()
+}
+
+fn python_prompt_indent(existing: &str) -> String {
+    if existing.trim().is_empty() {
+        return String::new();
+    }
+    let adjusted = python_auto_indent("x", existing);
+    let (indent, _content) = split_indent(&adjusted);
+    indent
+}
+
+fn python_dedent_one_level(indent: &str) -> String {
+    if indent.is_empty() {
+        return String::new();
+    }
+    if indent.ends_with('\t') {
+        return indent[..indent.len() - 1].to_string();
+    }
+    let mut trimmed = indent.to_string();
+    let mut removed = 0usize;
+    while removed < 4 && trimmed.ends_with(' ') {
+        trimmed.pop();
+        removed += 1;
+    }
+    trimmed
+}
+
+fn python_last_def_indent(existing: &str) -> Option<String> {
+    for line in existing.lines().rev() {
+        let trimmed = line.trim_end();
+        if trimmed.trim().is_empty() {
+            continue;
+        }
+        let lowered = trimmed.trim_start().to_ascii_lowercase();
+        if lowered.starts_with("def ") || lowered.starts_with("async def ") {
+            let indent = line
+                .chars()
+                .take_while(|c| *c == ' ' || *c == '\t')
+                .collect::<String>();
+            return Some(indent);
+        }
+    }
+    None
+}
+
+fn split_indent(line: &str) -> (String, &str) {
+    let mut idx = 0;
+    for (i, ch) in line.char_indices() {
+        if ch == ' ' || ch == '\t' {
+            idx = i + ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    (line[..idx].to_string(), &line[idx..])
 }
 
 fn has_unclosed_delimiters(code: &str) -> bool {
@@ -1054,6 +1186,23 @@ impl ReplState {
                 self.print_languages();
                 return Ok(false);
             }
+            "versions" => {
+                if let Some(lang) = parts.next() {
+                    let spec = LanguageSpec::new(lang.to_string());
+                    if self.registry.resolve(&spec).is_some() {
+                        self.print_versions(Some(spec))?;
+                    } else {
+                        let available = self.registry.known_languages().join(", ");
+                        println!(
+                            "language '{}' not supported. Available: {available}",
+                            spec.canonical_id()
+                        );
+                    }
+                } else {
+                    self.print_versions(None)?;
+                }
+                return Ok(false);
+            }
             "detect" => {
                 if let Some(arg) = parts.next() {
                     match arg {
@@ -1109,7 +1258,10 @@ impl ReplState {
             "load" | "run" => {
                 if let Some(token) = parts.next() {
                     let path = PathBuf::from(token);
-                    self.execute_payload(ExecutionPayload::File { path })?;
+                    self.execute_payload(ExecutionPayload::File {
+                        path,
+                        args: Vec::new(),
+                    })?;
                 } else {
                     println!("usage: :load <path>");
                 }
@@ -1228,6 +1380,7 @@ impl ReplState {
 
         let payload = ExecutionPayload::Inline {
             code: code.to_string(),
+            args: Vec::new(),
         };
         self.execute_payload(payload)
     }
@@ -1239,7 +1392,7 @@ impl ReplState {
     fn execute_payload(&mut self, payload: ExecutionPayload) -> Result<()> {
         let language = self.current_language.clone();
         let outcome = match payload {
-            ExecutionPayload::Inline { code } => {
+            ExecutionPayload::Inline { code, .. } => {
                 if self.engine_supports_sessions(&language)? {
                     self.eval_in_session(&language, &code)?
                 } else {
@@ -1247,10 +1400,13 @@ impl ReplState {
                         .registry
                         .resolve(&language)
                         .context("language engine not found")?;
-                    engine.execute(&ExecutionPayload::Inline { code })?
+                    engine.execute(&ExecutionPayload::Inline {
+                        code,
+                        args: Vec::new(),
+                    })?
                 }
             }
-            ExecutionPayload::File { ref path } => {
+            ExecutionPayload::File { ref path, .. } => {
                 // Read the file and feed it through the session so variables persist
                 if self.engine_supports_sessions(&language)? {
                     let code = std::fs::read_to_string(path)
@@ -1265,7 +1421,7 @@ impl ReplState {
                     engine.execute(&payload)?
                 }
             }
-            ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Stdin { code, .. } => {
                 if self.engine_supports_sessions(&language)? {
                     self.eval_in_session(&language, &code)?
                 } else {
@@ -1273,7 +1429,10 @@ impl ReplState {
                         .registry
                         .resolve(&language)
                         .context("language engine not found")?;
-                    engine.execute(&ExecutionPayload::Stdin { code })?
+                    engine.execute(&ExecutionPayload::Stdin {
+                        code,
+                        args: Vec::new(),
+                    })?
                 }
             }
         };
@@ -1315,15 +1474,87 @@ impl ReplState {
         println!("available languages: {}", languages.join(", "));
     }
 
-    fn install_package(&self, package: &str) {
-        let lang_id = self.current_language.canonical_id();
-        if package_install_command(lang_id).is_none() {
-            println!("No package manager available for '{lang_id}'.");
-            return;
+    fn print_versions(&self, language: Option<LanguageSpec>) -> Result<()> {
+        println!("language toolchain versions...\n");
+
+        let mut available = 0u32;
+        let mut missing = 0u32;
+
+        let mut languages: Vec<String> = if let Some(lang) = language {
+            vec![lang.canonical_id().to_string()]
+        } else {
+            self.registry
+                .known_languages()
+                .into_iter()
+                .map(|value| value.to_string())
+                .collect()
+        };
+        languages.sort();
+
+        for lang_id in &languages {
+            let spec = LanguageSpec::new(lang_id.to_string());
+            if let Some(engine) = self.registry.resolve(&spec) {
+                match engine.toolchain_version() {
+                    Ok(Some(version)) => {
+                        available += 1;
+                        println!(
+                            "  [\x1b[32m OK \x1b[0m] {:<14} {} - {}",
+                            engine.display_name(),
+                            lang_id,
+                            version
+                        );
+                    }
+                    Ok(None) => {
+                        available += 1;
+                        println!(
+                            "  [\x1b[33m ?? \x1b[0m] {:<14} {} - unknown",
+                            engine.display_name(),
+                            lang_id
+                        );
+                    }
+                    Err(_) => {
+                        missing += 1;
+                        println!(
+                            "  [\x1b[31mMISS\x1b[0m] {:<14} {}",
+                            engine.display_name(),
+                            lang_id
+                        );
+                    }
+                }
+            }
         }
 
+        println!();
+        println!(
+            "  {} available, {} missing, {} total",
+            available,
+            missing,
+            available + missing
+        );
+
+        if missing > 0 {
+            println!("\n  Tip: Install missing toolchains to enable those languages.");
+        }
+
+        Ok(())
+    }
+
+    fn install_package(&self, package: &str) {
+        let lang_id = self.current_language.canonical_id();
+        let override_key = format!("RUN_INSTALL_COMMAND_{}", lang_id.to_ascii_uppercase());
+        let override_value = std::env::var(&override_key).ok();
         let Some(mut cmd) = build_install_command(lang_id, package) else {
-            println!("Failed to build install command for '{lang_id}'.");
+            if override_value.is_some() {
+                println!(
+                    "Error: {override_key} is set but could not be parsed.\n\
+                     Provide a valid command, e.g. {override_key}=\"uv pip install {{package}}\""
+                );
+                return;
+            }
+            println!(
+                "No package manager available for '{lang_id}'.\n\
+                 Tip: set {override_key}=\"<cmd> {{package}}\"",
+            );
             return;
         };
 
@@ -1340,6 +1571,11 @@ impl ReplState {
             }
             Ok(_) => {
                 println!("\x1b[31m[run]\x1b[0m Failed to install '{package}'");
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let program = cmd.get_program().to_string_lossy();
+                println!("\x1b[31m[run]\x1b[0m Package manager not found: {program}");
+                println!("Tip: install it or set {override_key}=\"<cmd> {{package}}\"");
             }
             Err(e) => {
                 println!("\x1b[31m[run]\x1b[0m Error running package manager: {e}");
@@ -1431,6 +1667,7 @@ impl ReplState {
         println!("  \x1b[36m:help\x1b[0m                 \x1b[2mShow this help\x1b[0m");
         println!("  \x1b[36m:lang\x1b[0m <id>            \x1b[2mSwitch language\x1b[0m");
         println!("  \x1b[36m:languages\x1b[0m            \x1b[2mList available languages\x1b[0m");
+        println!("  \x1b[36m:versions\x1b[0m [id]       \x1b[2mShow toolchain versions\x1b[0m");
         println!(
             "  \x1b[36m:detect\x1b[0m on|off        \x1b[2mToggle auto language detection\x1b[0m"
         );
@@ -1469,10 +1706,12 @@ fn render_outcome(outcome: &ExecutionOutcome) {
         print!("{}", ensure_trailing_newline(&outcome.stdout));
     }
     if !outcome.stderr.is_empty() {
-        eprint!(
-            "\x1b[31m{}\x1b[0m",
-            ensure_trailing_newline(&outcome.stderr)
+        let formatted = output::format_stderr(
+            &outcome.language,
+            &outcome.stderr,
+            outcome.success(),
         );
+        eprint!("\x1b[31m{}\x1b[0m", ensure_trailing_newline(&formatted));
     }
 
     let millis = outcome.duration.as_millis();
@@ -1752,6 +1991,65 @@ mod tests {
     }
 
     #[test]
+    fn python_auto_indents_nested_blocks() {
+        let mut p = PendingInput::new();
+        p.push_line("def bubble_sort(arr):");
+        p.push_line_auto("python", "n = len(arr)");
+        p.push_line_auto("python", "for i in range(n):");
+        p.push_line_auto("python", "for j in range(0, n-i-1):");
+        p.push_line_auto("python", "if arr[j] > arr[j+1]:");
+        p.push_line_auto("python", "arr[j], arr[j+1] = arr[j+1], arr[j]");
+        let code = p.take();
+        assert!(code.contains("    n = len(arr)\n"), "missing indent for len");
+        assert!(
+            code.contains("    for i in range(n):\n"),
+            "missing indent for outer loop"
+        );
+        assert!(
+            code.contains("        for j in range(0, n-i-1):\n"),
+            "missing indent for inner loop"
+        );
+        assert!(
+            code.contains("            if arr[j] > arr[j+1]:\n"),
+            "missing indent for if"
+        );
+        assert!(
+            code.contains("                arr[j], arr[j+1] = arr[j+1], arr[j]\n"),
+            "missing indent for swap"
+        );
+    }
+
+    #[test]
+    fn python_auto_dedents_else_like_blocks() {
+        let mut p = PendingInput::new();
+        p.push_line("def f():");
+        p.push_line_auto("python", "if True:");
+        p.push_line_auto("python", "print('yes')");
+        p.push_line_auto("python", "else:");
+        let code = p.take();
+        assert!(
+            code.contains("    else:\n"),
+            "expected else to align with if block:\n{code}"
+        );
+    }
+
+    #[test]
+    fn python_auto_dedents_return_to_def() {
+        let mut p = PendingInput::new();
+        p.push_line("def bubble_sort(arr):");
+        p.push_line_auto("python", "for i in range(3):");
+        p.push_line_auto("python", "for j in range(2):");
+        p.push_line_auto("python", "if j:");
+        p.push_line_auto("python", "pass");
+        p.push_line_auto("python", "return arr");
+        let code = p.take();
+        assert!(
+            code.contains("    return arr\n"),
+            "expected return to align with def block:\n{code}"
+        );
+    }
+
+    #[test]
     fn generic_multiline_tracks_unclosed_delimiters() {
         let mut p = PendingInput::new();
         p.push_line("func(");
@@ -1776,5 +2074,15 @@ mod tests {
         assert!(p.needs_more_input("csharp"));
         p.push_line("Bar()");
         assert!(!p.needs_more_input("csharp"));
+    }
+
+    #[test]
+    fn generic_multiline_accepts_preprocessor_lines() {
+        let mut p = PendingInput::new();
+        p.push_line("#include <stdio.h>");
+        assert!(
+            !p.needs_more_input("c"),
+            "preprocessor lines should not force continuation"
+        );
     }
 }

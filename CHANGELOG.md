@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.6.0] - 2026-02-09
+
+### Added
+
+- `--versions` (CLI) and `:versions` (REPL) to show installed toolchain versions.
+- Per-language package manager overrides via `RUN_INSTALL_COMMAND_<LANG>` (e.g. uv, pnpm).
+- Friendly error wrapper that scrubs temp paths in compiler/runtime errors.
+
+### Changed
+
+- Python installs now use `python -m pip` to respect active virtual environments.
+- Python REPL now renders and inserts the suggested indent for multiline blocks.
+- CLI parsing accepts script arguments after `--code`/files and supports `--` separators.
+
+### Fixed
+
+- Python REPL auto-indent/dedent for nested blocks and `return`/`else` alignment.
+- C/C++ preprocessor lines (e.g. `#include`) no longer keep the multiline prompt open.
+
 ## [0.5.1] - 2026-02-06
 
 ### Fixed
@@ -130,7 +149,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/esubaalew/run/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/esubaalew/run/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/esubaalew/run/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/esubaalew/run/compare/v0.3.2...v0.4.0

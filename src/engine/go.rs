@@ -9,7 +9,7 @@ use tempfile::{Builder, TempDir};
 
 use super::{
     ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store,
-    execution_timeout, hash_source, try_cached_execution, wait_with_timeout,
+    execution_timeout, hash_source, run_version_command, try_cached_execution, wait_with_timeout,
 };
 
 pub struct GoEngine {
@@ -53,7 +53,12 @@ impl GoEngine {
         Ok((dir, path))
     }
 
-    fn execute_with_path(&self, binary: &Path, source: &Path) -> Result<std::process::Output> {
+    fn execute_with_path(
+        &self,
+        binary: &Path,
+        source: &Path,
+        args: &[String],
+    ) -> Result<std::process::Output> {
         let mut cmd = Command::new(binary);
         cmd.arg("run")
             .stdout(Stdio::piped())
@@ -68,8 +73,9 @@ impl GoEngine {
             } else {
                 cmd.arg(source);
             }
+            cmd.args(args);
         } else {
-            cmd.arg(source);
+            cmd.arg(source).args(args);
         }
         let child = cmd.spawn().with_context(|| {
             format!(
@@ -112,10 +118,20 @@ impl LanguageEngine for GoEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", binary.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let binary = self.ensure_executable()?;
+        let mut cmd = Command::new(binary);
+        cmd.arg("version");
+        let context = format!("{}", binary.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Try cache for inline/stdin payloads
+        let args = payload.args();
+
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 Some(code.as_str())
             }
             _ => None,
@@ -137,17 +153,17 @@ impl LanguageEngine for GoEngine {
         let start = Instant::now();
 
         let (temp_dir, source_path, cache_key) = match payload {
-            ExecutionPayload::Inline { code } => {
+            ExecutionPayload::Inline { code, .. } => {
                 let h = hash_source(code);
                 let (dir, path) = self.write_temp_source(code)?;
                 (Some(dir), path, Some(h))
             }
-            ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Stdin { code, .. } => {
                 let h = hash_source(code);
                 let (dir, path) = self.write_temp_source(code)?;
                 (Some(dir), path, Some(h))
             }
-            ExecutionPayload::File { path } => (None, path.clone(), None),
+            ExecutionPayload::File { path, .. } => (None, path.clone(), None),
         };
 
         // For cacheable code, use go build + run instead of go run
@@ -186,6 +202,7 @@ impl LanguageEngine for GoEngine {
 
             let mut run_cmd = Command::new(&bin_path);
             run_cmd
+                .args(args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .stdin(Stdio::inherit());
@@ -207,7 +224,7 @@ impl LanguageEngine for GoEngine {
             });
         }
 
-        let output = self.execute_with_path(binary, &source_path)?;
+        let output = self.execute_with_path(binary, &source_path, args)?;
         drop(temp_dir);
 
         Ok(ExecutionOutcome {

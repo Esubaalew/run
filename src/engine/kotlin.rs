@@ -6,7 +6,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, hash_source};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, hash_source,
+    run_version_command,
+};
 
 pub struct KotlinEngine {
     compiler: Option<PathBuf>,
@@ -76,9 +79,9 @@ impl KotlinEngine {
         invoke_kotlin_compiler(compiler, source, jar)
     }
 
-    fn run(&self, jar: &Path) -> Result<std::process::Output> {
+    fn run(&self, jar: &Path, args: &[String]) -> Result<std::process::Output> {
         let java = self.ensure_java()?;
-        run_kotlin_jar(java, jar)
+        run_kotlin_jar(java, jar, args)
     }
 }
 
@@ -129,10 +132,20 @@ impl LanguageEngine for KotlinEngine {
         Ok(())
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let compiler = self.ensure_compiler()?;
+        let mut cmd = Command::new(compiler);
+        cmd.arg("-version");
+        let context = format!("{}", compiler.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Check jar cache for inline/stdin payloads
+        let args = payload.args();
+
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 Some(code.as_str())
             }
             _ => None,
@@ -144,7 +157,7 @@ impl LanguageEngine for KotlinEngine {
                 .join(format!("kotlin-{:016x}.jar", src_hash));
             if cached_jar.exists() {
                 let start = Instant::now();
-                if let Ok(output) = self.run(&cached_jar) {
+                if let Ok(output) = self.run(&cached_jar, args) {
                     return Ok(ExecutionOutcome {
                         language: self.id().to_string(),
                         exit_code: output.status.code(),
@@ -163,10 +176,10 @@ impl LanguageEngine for KotlinEngine {
         let dir_path = temp_dir.path();
 
         let source_path = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 self.write_inline_source(code, dir_path)?
             }
-            ExecutionPayload::File { path } => self.copy_source(path, dir_path)?,
+            ExecutionPayload::File { path, .. } => self.copy_source(path, dir_path)?,
         };
 
         let jar_path = dir_path.join("snippet.jar");
@@ -185,7 +198,7 @@ impl LanguageEngine for KotlinEngine {
 
         // Cache the compiled jar
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 Some(code.as_str())
             }
             _ => None,
@@ -198,7 +211,7 @@ impl LanguageEngine for KotlinEngine {
             let _ = std::fs::copy(&jar_path, &cached_jar);
         }
 
-        let run_output = self.run(&jar_path)?;
+        let run_output = self.run(&jar_path, args)?;
         Ok(ExecutionOutcome {
             language: self.id().to_string(),
             exit_code: run_output.status.code(),
@@ -458,10 +471,11 @@ fn invoke_kotlin_compiler(
     })
 }
 
-fn run_kotlin_jar(java: &Path, jar: &Path) -> Result<std::process::Output> {
+fn run_kotlin_jar(java: &Path, jar: &Path, args: &[String]) -> Result<std::process::Output> {
     let mut cmd = Command::new(java);
     cmd.arg("-jar")
         .arg(jar)
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     cmd.stdin(Stdio::inherit());
@@ -533,7 +547,7 @@ impl KotlinSession {
         if !compile_output.status.success() {
             return Ok((compile_output, start.elapsed()));
         }
-        let run_output = run_kotlin_jar(&self.java, &self.jar_path)?;
+        let run_output = run_kotlin_jar(&self.java, &self.jar_path, &[])?;
         Ok((run_output, start.elapsed()))
     }
 
@@ -622,7 +636,7 @@ impl KotlinSession {
             });
         }
 
-        let run_output = run_kotlin_jar(&self.java, &self.jar_path)?;
+        let run_output = run_kotlin_jar(&self.java, &self.jar_path, &[])?;
         Ok(ExecutionOutcome {
             language: "kotlin".to_string(),
             exit_code: run_output.status.code(),

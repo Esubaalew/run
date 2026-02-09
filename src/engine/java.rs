@@ -8,7 +8,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::Builder;
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, hash_source};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, hash_source,
+    run_version_command,
+};
 
 pub struct JavaEngine {
     compiler: Option<PathBuf>,
@@ -109,12 +112,18 @@ impl JavaEngine {
         })
     }
 
-    fn run(&self, class_dir: &Path, class_name: &str) -> Result<std::process::Output> {
+    fn run(
+        &self,
+        class_dir: &Path,
+        class_name: &str,
+        args: &[String],
+    ) -> Result<std::process::Output> {
         let runtime = self.ensure_runtime()?;
         let mut cmd = Command::new(runtime);
         cmd.arg("-cp")
             .arg(class_dir)
             .arg(class_name)
+            .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         cmd.stdin(Stdio::inherit());
@@ -190,10 +199,20 @@ impl LanguageEngine for JavaEngine {
         Ok(())
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let runtime = self.ensure_runtime()?;
+        let mut cmd = Command::new(runtime);
+        cmd.arg("-version");
+        let context = format!("{}", runtime.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Check class file cache for inline/stdin payloads
+        let args = payload.args();
+
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 Some(code.as_str())
             }
             _ => None,
@@ -206,7 +225,7 @@ impl LanguageEngine for JavaEngine {
             let class_file = cache_dir.join("Main.class");
             if class_file.exists() {
                 let start = Instant::now();
-                if let Ok(output) = self.run(&cache_dir, "Main") {
+                if let Ok(output) = self.run(&cache_dir, "Main", args) {
                     return Ok(ExecutionOutcome {
                         language: self.id().to_string(),
                         exit_code: output.status.code(),
@@ -225,9 +244,9 @@ impl LanguageEngine for JavaEngine {
         let dir_path = temp_dir.path();
 
         let (source_path, class_name) = match payload {
-            ExecutionPayload::Inline { code } => self.write_inline_source(code, dir_path)?,
-            ExecutionPayload::Stdin { code } => self.write_from_stdin(code, dir_path)?,
-            ExecutionPayload::File { path } => self.copy_source(path, dir_path)?,
+            ExecutionPayload::Inline { code, .. } => self.write_inline_source(code, dir_path)?,
+            ExecutionPayload::Stdin { code, .. } => self.write_from_stdin(code, dir_path)?,
+            ExecutionPayload::File { path, .. } => self.copy_source(path, dir_path)?,
         };
 
         let start = Instant::now();
@@ -245,7 +264,7 @@ impl LanguageEngine for JavaEngine {
 
         // Cache compiled class files for inline/stdin
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 Some(code.as_str())
             }
             _ => None,
@@ -266,7 +285,7 @@ impl LanguageEngine for JavaEngine {
             }
         }
 
-        let run_output = self.run(dir_path, &class_name)?;
+        let run_output = self.run(dir_path, &class_name, args)?;
         Ok(ExecutionOutcome {
             language: self.id().to_string(),
             exit_code: run_output.status.code(),

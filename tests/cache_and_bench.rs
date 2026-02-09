@@ -83,6 +83,7 @@ fn rust_inline_uses_cache_on_repeated_run() {
     let code = r#"fn main() { println!("cache_test"); }"#;
     let payload = run::engine::ExecutionPayload::Inline {
         code: code.to_string(),
+        args: Vec::new(),
     };
 
     let out1 = engine.execute(&payload).expect("first run should succeed");
@@ -214,6 +215,7 @@ fn format_duration_millis() {
 
     let payload = run::engine::ExecutionPayload::Inline {
         code: "1+1".to_string(),
+        args: Vec::new(),
     };
     let outcome = engine.execute(&payload).expect("should run");
     assert!(outcome.success());

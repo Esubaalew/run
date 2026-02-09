@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
 
 pub struct BashEngine {
     executable: PathBuf,
@@ -63,23 +63,32 @@ impl LanguageEngine for BashEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", self.binary().display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let mut cmd = self.run_command();
+        cmd.arg("--version");
+        let context = format!("{}", self.binary().display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
+        let args = payload.args();
         let output = match payload {
-            ExecutionPayload::Inline { code } => {
+            ExecutionPayload::Inline { code, .. } => {
                 let mut cmd = self.run_command();
-                cmd.arg("-c").arg(code);
+                cmd.arg("-c").arg(code).args(args);
                 cmd.stdin(Stdio::inherit());
                 cmd.output()
             }
-            ExecutionPayload::File { path } => {
+            ExecutionPayload::File { path, .. } => {
                 let mut cmd = self.run_command();
-                cmd.arg(path);
+                cmd.arg(path).args(args);
                 cmd.stdin(Stdio::inherit());
                 cmd.output()
             }
-            ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Stdin { code, .. } => {
                 let mut cmd = self.run_command();
+                cmd.args(args);
                 cmd.stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());

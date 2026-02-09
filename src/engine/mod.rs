@@ -27,11 +27,11 @@ mod zig;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Child;
+use std::process::{Child, Command, Output, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
 use crate::cli::InputSource;
 use crate::language::{LanguageSpec, canonical_language_id};
@@ -209,47 +209,94 @@ pub trait LanguageEngine {
     fn validate(&self) -> Result<()> {
         Ok(())
     }
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome>;
     fn start_session(&self) -> Result<Box<dyn LanguageSession>> {
         bail!("{} does not support interactive sessions yet", self.id())
     }
 }
 
+pub(crate) fn version_line_from_output(output: &Output) -> Option<String> {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+pub(crate) fn run_version_command(mut cmd: Command, context: &str) -> Result<Option<String>> {
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let output = cmd
+        .output()
+        .with_context(|| format!("failed to invoke {context}"))?;
+    let version = version_line_from_output(&output);
+    if output.status.success() || version.is_some() {
+        Ok(version)
+    } else {
+        bail!("{context} exited with status {}", output.status);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionPayload {
-    Inline { code: String },
-    File { path: std::path::PathBuf },
-    Stdin { code: String },
+    Inline { code: String, args: Vec<String> },
+    File { path: std::path::PathBuf, args: Vec<String> },
+    Stdin { code: String, args: Vec<String> },
 }
 
 impl ExecutionPayload {
-    pub fn from_input_source(source: &InputSource) -> Result<Self> {
+    pub fn from_input_source(source: &InputSource, args: &[String]) -> Result<Self> {
+        let args = args.to_vec();
         match source {
             InputSource::Inline(code) => Ok(Self::Inline {
                 code: normalize_inline_code(code).into_owned(),
+                args,
             }),
-            InputSource::File(path) => Ok(Self::File { path: path.clone() }),
+            InputSource::File(path) => Ok(Self::File {
+                path: path.clone(),
+                args,
+            }),
             InputSource::Stdin => {
                 use std::io::Read;
                 let mut buffer = String::new();
                 std::io::stdin().read_to_string(&mut buffer)?;
-                Ok(Self::Stdin { code: buffer })
+                Ok(Self::Stdin { code: buffer, args })
             }
         }
     }
 
     pub fn as_inline(&self) -> Option<&str> {
         match self {
-            ExecutionPayload::Inline { code } => Some(code.as_str()),
-            ExecutionPayload::Stdin { code } => Some(code.as_str()),
+            ExecutionPayload::Inline { code, .. } => Some(code.as_str()),
+            ExecutionPayload::Stdin { code, .. } => Some(code.as_str()),
             ExecutionPayload::File { .. } => None,
         }
     }
 
     pub fn as_file_path(&self) -> Option<&Path> {
         match self {
-            ExecutionPayload::File { path } => Some(path.as_path()),
+            ExecutionPayload::File { path, .. } => Some(path.as_path()),
             _ => None,
+        }
+    }
+
+    pub fn args(&self) -> &[String] {
+        match self {
+            ExecutionPayload::Inline { args, .. } => args.as_slice(),
+            ExecutionPayload::File { args, .. } => args.as_slice(),
+            ExecutionPayload::Stdin { args, .. } => args.as_slice(),
         }
     }
 }
@@ -458,9 +505,39 @@ pub fn package_install_command(
     }
 }
 
+fn install_override_command(language_id: &str, package: &str) -> Option<std::process::Command> {
+    let key = format!("RUN_INSTALL_COMMAND_{}", language_id.to_ascii_uppercase());
+    let template = std::env::var(&key).ok()?;
+    let expanded = if template.contains("{package}") {
+        template.replace("{package}", package)
+    } else {
+        format!("{template} {package}")
+    };
+    let parts = shell_words::split(&expanded).ok()?;
+    if parts.is_empty() {
+        return None;
+    }
+    let mut cmd = std::process::Command::new(&parts[0]);
+    for arg in &parts[1..] {
+        cmd.arg(arg);
+    }
+    Some(cmd)
+}
+
 /// Build a full install command for a package in the given language.
 /// Returns None if the language has no package manager.
 pub fn build_install_command(language_id: &str, package: &str) -> Option<std::process::Command> {
+    if let Some(cmd) = install_override_command(language_id, package) {
+        return Some(cmd);
+    }
+
+    if language_id == "python" {
+        let python = python::resolve_python_binary();
+        let mut cmd = std::process::Command::new(python);
+        cmd.arg("-m").arg("pip").arg("install").arg(package);
+        return Some(cmd);
+    }
+
     let (binary, base_args) = package_install_command(language_id)?;
 
     let mut cmd = std::process::Command::new(binary);

@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
 
 pub struct RubyEngine {
     executable: PathBuf,
@@ -73,24 +73,33 @@ impl LanguageEngine for RubyEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", self.binary().display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let mut cmd = self.run_command();
+        cmd.arg("--version");
+        let context = format!("{}", self.binary().display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
+        let args = payload.args();
         let output = match payload {
-            ExecutionPayload::Inline { code } => {
+            ExecutionPayload::Inline { code, .. } => {
                 let mut cmd = self.run_command();
-                cmd.arg("-e").arg(code);
+                cmd.arg("-e").arg(code).args(args);
                 cmd.stdin(Stdio::inherit());
                 cmd.output()
             }
-            ExecutionPayload::File { path } => {
+            ExecutionPayload::File { path, .. } => {
                 let mut cmd = self.run_command();
-                cmd.arg(path);
+                cmd.arg(path).args(args);
                 cmd.stdin(Stdio::inherit());
                 cmd.output()
             }
-            ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Stdin { code, .. } => {
                 let mut cmd = self.run_command();
                 cmd.arg("-")
+                    .args(args)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());

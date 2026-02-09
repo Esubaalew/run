@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
 
 pub struct CSharpEngine {
     runtime: Option<PathBuf>,
@@ -48,7 +48,7 @@ impl CSharpEngine {
     fn prepare_source(&self, payload: &ExecutionPayload, dir: &Path) -> Result<PathBuf> {
         let target = dir.join("Program.cs");
         match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 let mut contents = code.to_string();
                 if !contents.ends_with('\n') {
                     contents.push('\n');
@@ -60,7 +60,7 @@ impl CSharpEngine {
                     )
                 })?;
             }
-            ExecutionPayload::File { path } => {
+            ExecutionPayload::File { path, .. } => {
                 fs::copy(path, &target).with_context(|| {
                     format!(
                         "failed to copy C# source from {} to {}",
@@ -102,6 +102,7 @@ impl CSharpEngine {
         runtime: &Path,
         project: &Path,
         workdir: &Path,
+        args: &[String],
     ) -> Result<std::process::Output> {
         let mut cmd = Command::new(runtime);
         cmd.arg("run")
@@ -111,6 +112,9 @@ impl CSharpEngine {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .current_dir(workdir);
+        if !args.is_empty() {
+            cmd.arg("--").args(args);
+        }
         cmd.stdin(Stdio::inherit());
         cmd.env("DOTNET_CLI_TELEMETRY_OPTOUT", "1");
         cmd.env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1");
@@ -156,6 +160,14 @@ impl LanguageEngine for CSharpEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", runtime.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let runtime = self.ensure_runtime()?;
+        let mut cmd = Command::new(runtime);
+        cmd.arg("--version");
+        let context = format!("{}", runtime.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let runtime = self.ensure_runtime()?;
         let tfm = self.ensure_target_framework()?;
@@ -172,7 +184,7 @@ impl LanguageEngine for CSharpEngine {
         let project_path = dir_path.join("Run.csproj");
         let start = Instant::now();
 
-        let output = self.run_project(runtime, &project_path, dir_path)?;
+        let output = self.run_project(runtime, &project_path, dir_path, payload.args())?;
 
         Ok(ExecutionOutcome {
             language: self.id().to_string(),

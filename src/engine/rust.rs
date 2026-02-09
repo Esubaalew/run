@@ -8,7 +8,7 @@ use tempfile::{Builder, TempDir};
 
 use super::{
     ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store,
-    execution_timeout, hash_source, try_cached_execution, wait_with_timeout,
+    execution_timeout, hash_source, run_version_command, try_cached_execution, wait_with_timeout,
 };
 
 pub struct RustEngine {
@@ -50,9 +50,9 @@ impl RustEngine {
             .with_context(|| format!("failed to invoke rustc at {}", compiler.display()))
     }
 
-    fn run_binary(&self, binary: &Path) -> Result<std::process::Output> {
+    fn run_binary(&self, binary: &Path, args: &[String]) -> Result<std::process::Output> {
         let mut cmd = Command::new(binary);
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.stdin(Stdio::inherit());
         let child = cmd
             .spawn()
@@ -118,10 +118,20 @@ impl LanguageEngine for RustEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", compiler.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let compiler = self.ensure_compiler()?;
+        let mut cmd = Command::new(compiler);
+        cmd.arg("--version");
+        let context = format!("{}", compiler.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Try cache for inline/stdin payloads
+        let args = payload.args();
+
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 Some(code.as_str())
             }
             _ => None,
@@ -146,15 +156,15 @@ impl LanguageEngine for RustEngine {
         let dir_path = temp_dir.path();
 
         let (source_path, cleanup_source, cache_key): (PathBuf, bool, Option<u64>) = match payload {
-            ExecutionPayload::Inline { code } => {
+            ExecutionPayload::Inline { code, .. } => {
                 let h = hash_source(code);
                 (self.write_inline_source(code, dir_path)?, true, Some(h))
             }
-            ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Stdin { code, .. } => {
                 let h = hash_source(code);
                 (self.write_inline_source(code, dir_path)?, true, Some(h))
             }
-            ExecutionPayload::File { path } => (path.clone(), false, None),
+            ExecutionPayload::File { path, .. } => (path.clone(), false, None),
         };
 
         let binary_path = Self::tmp_binary_path(dir_path);
@@ -178,7 +188,7 @@ impl LanguageEngine for RustEngine {
             cache_store(h, &binary_path);
         }
 
-        let runtime_output = self.run_binary(&binary_path)?;
+        let runtime_output = self.run_binary(&binary_path, args)?;
         let outcome = ExecutionOutcome {
             language: self.id().to_string(),
             exit_code: runtime_output.status.code(),

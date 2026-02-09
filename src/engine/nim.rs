@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
 
 pub struct NimEngine {
     executable: Option<PathBuf>,
@@ -50,7 +50,7 @@ impl NimEngine {
         Ok((dir, path))
     }
 
-    fn run_source(&self, source: &Path) -> Result<std::process::Output> {
+    fn run_source(&self, source: &Path, args: &[String]) -> Result<std::process::Output> {
         let executable = self.ensure_executable()?;
         let mut cmd = Command::new(executable);
         cmd.arg("r")
@@ -60,6 +60,9 @@ impl NimEngine {
             .arg("--verbosity:0")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if !args.is_empty() {
+            cmd.arg("--").args(args);
+        }
         cmd.stdin(Stdio::inherit());
         if let Some(dir) = source.parent() {
             cmd.current_dir(dir);
@@ -104,14 +107,22 @@ impl LanguageEngine for NimEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", executable.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let executable = self.ensure_executable()?;
+        let mut cmd = Command::new(executable);
+        cmd.arg("--version");
+        let context = format!("{}", executable.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
         let (temp_dir, source_path) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 let (dir, path) = self.write_temp_source(code)?;
                 (Some(dir), path)
             }
-            ExecutionPayload::File { path } => {
+            ExecutionPayload::File { path, .. } => {
                 if path.extension().and_then(|e| e.to_str()) != Some("nim") {
                     let code = std::fs::read_to_string(path)?;
                     let (dir, new_path) = self.write_temp_source(&code)?;
@@ -122,7 +133,7 @@ impl LanguageEngine for NimEngine {
             }
         };
 
-        let output = self.run_source(&source_path)?;
+        let output = self.run_source(&source_path, payload.args())?;
         drop(temp_dir);
 
         Ok(ExecutionOutcome {

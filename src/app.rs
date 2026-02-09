@@ -7,9 +7,10 @@ use anyhow::{Context, Result};
 use crate::cli::{Command, ExecutionSpec};
 use crate::engine::{
     ExecutionPayload, LanguageRegistry, build_install_command, default_language,
-    detect_language_for_source, ensure_known_language, package_install_command,
+    detect_language_for_source, ensure_known_language,
 };
 use crate::language::LanguageSpec;
+use crate::output;
 use crate::repl;
 use crate::version;
 
@@ -30,6 +31,7 @@ pub fn run(command: Command) -> Result<i32> {
             Ok(0)
         }
         Command::CheckToolchains => check_toolchains(&registry),
+        Command::ShowVersions { language } => show_versions(&registry, language),
         Command::Install { language, package } => {
             let lang = language.unwrap_or_else(|| LanguageSpec::new(default_language()));
             install_package(&lang, &package)
@@ -80,8 +82,76 @@ fn check_toolchains(registry: &LanguageRegistry) -> Result<i32> {
     Ok(0)
 }
 
+fn show_versions(
+    registry: &LanguageRegistry,
+    language: Option<LanguageSpec>,
+) -> Result<i32> {
+    println!("Language toolchain versions...\n");
+
+    let mut available = 0u32;
+    let mut missing = 0u32;
+
+    let mut languages: Vec<String> = if let Some(lang) = language {
+        vec![lang.canonical_id().to_string()]
+    } else {
+        registry
+            .known_languages()
+            .into_iter()
+            .map(|value| value.to_string())
+            .collect()
+    };
+    languages.sort();
+
+    for lang_id in &languages {
+        let spec = LanguageSpec::new(lang_id.to_string());
+        if let Some(engine) = registry.resolve(&spec) {
+            match engine.toolchain_version() {
+                Ok(Some(version)) => {
+                    available += 1;
+                    println!(
+                        "  [\x1b[32m OK \x1b[0m] {:<14} {} - {}",
+                        engine.display_name(),
+                        lang_id,
+                        version
+                    );
+                }
+                Ok(None) => {
+                    available += 1;
+                    println!(
+                        "  [\x1b[33m ?? \x1b[0m] {:<14} {} - unknown",
+                        engine.display_name(),
+                        lang_id
+                    );
+                }
+                Err(_) => {
+                    missing += 1;
+                    println!(
+                        "  [\x1b[31mMISS\x1b[0m] {:<14} {}",
+                        engine.display_name(),
+                        lang_id
+                    );
+                }
+            }
+        }
+    }
+
+    println!();
+    println!(
+        "  {} available, {} missing, {} total",
+        available,
+        missing,
+        available + missing
+    );
+
+    if missing > 0 {
+        println!("\n  Tip: Install missing toolchains to enable those languages.");
+    }
+
+    Ok(0)
+}
+
 fn execute_once(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32> {
-    let payload = ExecutionPayload::from_input_source(&spec.source)
+    let payload = ExecutionPayload::from_input_source(&spec.source, &spec.args)
         .context("failed to materialize execution payload")?;
     let language = resolve_language(
         spec.language,
@@ -111,7 +181,8 @@ fn execute_once(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32>
         io::stdout().flush().ok();
     }
     if !outcome.stderr.is_empty() {
-        eprint!("{}", outcome.stderr);
+        let formatted = output::format_stderr(engine.display_name(), &outcome.stderr, outcome.success());
+        eprint!("{formatted}");
         io::stderr().flush().ok();
     }
 
@@ -132,38 +203,58 @@ fn execute_once(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32>
 
 fn install_package(language: &LanguageSpec, package: &str) -> Result<i32> {
     let lang_id = language.canonical_id();
+    let override_key = format!("RUN_INSTALL_COMMAND_{}", lang_id.to_ascii_uppercase());
+    let override_value = std::env::var(&override_key).ok();
 
-    if package_install_command(lang_id).is_none() {
+    let Some(mut cmd) = build_install_command(lang_id, package) else {
+        if override_value.is_some() {
+            eprintln!(
+                "\x1b[31mError:\x1b[0m {override_key} is set but could not be parsed.\n\
+                 Provide a valid command, e.g. {override_key}=\"uv pip install {{package}}\""
+            );
+            return Ok(1);
+        }
         eprintln!(
             "\x1b[31mError:\x1b[0m No package manager available for '{lang_id}'.\n\
-             This language doesn't have a standard CLI package manager."
+             This language doesn't have a standard CLI package manager.\n\
+             Tip: You can override with {override_key}=\"<cmd> {{package}}\"",
         );
         return Ok(1);
-    }
-
-    let mut cmd =
-        build_install_command(lang_id, package).context("failed to build install command")?;
+    };
 
     eprintln!("\x1b[36m[run]\x1b[0m Installing '{package}' for {lang_id}...");
 
-    let status = cmd
+    let result = cmd
         .stdin(std::process::Stdio::inherit())
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
-        .status()
-        .with_context(|| format!("failed to run package manager for {lang_id}"))?;
+        .status();
 
-    if status.success() {
-        eprintln!("\x1b[32m[run]\x1b[0m Successfully installed '{package}' for {lang_id}");
-        Ok(0)
-    } else {
-        eprintln!("\x1b[31m[run]\x1b[0m Failed to install '{package}' for {lang_id}");
-        Ok(status.code().unwrap_or(1))
+    match result {
+        Ok(status) if status.success() => {
+            eprintln!("\x1b[32m[run]\x1b[0m Successfully installed '{package}' for {lang_id}");
+            Ok(0)
+        }
+        Ok(status) => {
+            eprintln!("\x1b[31m[run]\x1b[0m Failed to install '{package}' for {lang_id}");
+            Ok(status.code().unwrap_or(1))
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            let program = cmd.get_program().to_string_lossy();
+            eprintln!(
+                "\x1b[31m[run]\x1b[0m Package manager not found: {program}"
+            );
+            eprintln!("Tip: install it or set {override_key}=\"<cmd> {{package}}\"");
+            Ok(1)
+        }
+        Err(err) => {
+            return Err(err).with_context(|| format!("failed to run package manager for {lang_id}"));
+        }
     }
 }
 
 fn bench_run(spec: ExecutionSpec, registry: &LanguageRegistry, iterations: u32) -> Result<i32> {
-    let payload = ExecutionPayload::from_input_source(&spec.source)
+    let payload = ExecutionPayload::from_input_source(&spec.source, &spec.args)
         .context("failed to materialize execution payload")?;
     let language = resolve_language(
         spec.language,
@@ -253,7 +344,7 @@ fn watch_run(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32> {
         anyhow::bail!("File not found: {}", file_path.display());
     }
 
-    let payload = ExecutionPayload::from_input_source(&spec.source)
+    let payload = ExecutionPayload::from_input_source(&spec.source, &spec.args)
         .context("failed to materialize execution payload")?;
     let language = resolve_language(
         spec.language.clone(),
@@ -286,7 +377,7 @@ fn watch_run(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32> {
     // Initial run
     run_count += 1;
     eprintln!("\n\x1b[2m--- run #{run_count} ---\x1b[0m");
-    run_file_once(&file_path, engine);
+    run_file_once(&file_path, engine, &spec.args);
 
     loop {
         std::thread::sleep(std::time::Duration::from_millis(300));
@@ -298,14 +389,19 @@ fn watch_run(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32> {
 
             eprintln!("\n\x1b[2m--- run #{run_count} ---\x1b[0m");
 
-            run_file_once(&file_path, engine);
+            run_file_once(&file_path, engine, &spec.args);
         }
     }
 }
 
-fn run_file_once(file_path: &Path, engine: &dyn crate::engine::LanguageEngine) {
+fn run_file_once(
+    file_path: &Path,
+    engine: &dyn crate::engine::LanguageEngine,
+    args: &[String],
+) {
     let payload = ExecutionPayload::File {
         path: file_path.to_path_buf(),
+        args: args.to_vec(),
     };
     match engine.execute(&payload) {
         Ok(outcome) => {

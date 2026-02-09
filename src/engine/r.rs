@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
 
 pub struct REngine {
     executable: Option<PathBuf>,
@@ -48,11 +48,12 @@ impl REngine {
         Ok((dir, path))
     }
 
-    fn execute_with_path(&self, source: &Path) -> Result<std::process::Output> {
+    fn execute_with_path(&self, source: &Path, args: &[String]) -> Result<std::process::Output> {
         let executable = self.ensure_executable()?;
         let mut cmd = Command::new(executable);
         cmd.arg("--vanilla")
             .arg(source)
+            .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         cmd.stdin(Stdio::inherit());
@@ -96,21 +97,29 @@ impl LanguageEngine for REngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", executable.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let executable = self.ensure_executable()?;
+        let mut cmd = Command::new(executable);
+        cmd.arg("--version");
+        let context = format!("{}", executable.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
         let (temp_dir, path) = match payload {
-            ExecutionPayload::Inline { code } => {
+            ExecutionPayload::Inline { code, .. } => {
                 let (dir, path) = self.write_temp_source(code)?;
                 (Some(dir), path)
             }
-            ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Stdin { code, .. } => {
                 let (dir, path) = self.write_temp_source(code)?;
                 (Some(dir), path)
             }
-            ExecutionPayload::File { path } => (None, path.clone()),
+            ExecutionPayload::File { path, .. } => (None, path.clone()),
         };
 
-        let output = self.execute_with_path(&path)?;
+        let output = self.execute_with_path(&path, payload.args())?;
         drop(temp_dir);
 
         Ok(ExecutionOutcome {

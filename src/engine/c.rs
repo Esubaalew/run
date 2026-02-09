@@ -9,7 +9,7 @@ use tempfile::{Builder, TempDir};
 
 use super::{
     ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store, hash_source,
-    try_cached_execution,
+    run_version_command, try_cached_execution,
 };
 
 pub struct CEngine {
@@ -82,9 +82,9 @@ impl CEngine {
         })
     }
 
-    fn run_binary(&self, binary: &Path) -> Result<std::process::Output> {
+    fn run_binary(&self, binary: &Path, args: &[String]) -> Result<std::process::Output> {
         let mut cmd = Command::new(binary);
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
         cmd.stdin(Stdio::inherit());
         cmd.output()
             .with_context(|| format!("failed to execute compiled binary {}", binary.display()))
@@ -134,10 +134,20 @@ impl LanguageEngine for CEngine {
             .ok_or_else(|| anyhow::anyhow!("{} is not executable", compiler.display()))
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let compiler = self.ensure_compiler()?;
+        let mut cmd = Command::new(compiler);
+        cmd.arg("--version");
+        let context = format!("{}", compiler.display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Try cache for inline/stdin payloads
+        let args = payload.args();
+
         if let Some(code) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 Some(code.as_str())
             }
             _ => None,
@@ -163,12 +173,12 @@ impl LanguageEngine for CEngine {
         let dir_path = temp_dir.path();
 
         let (source_path, cache_key) = match payload {
-            ExecutionPayload::Inline { code } | ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
                 let prepared = prepare_inline_source(code);
                 let h = hash_source(&prepared);
                 (self.write_source(code, dir_path)?, Some(h))
             }
-            ExecutionPayload::File { path } => (self.copy_source(path, dir_path)?, None),
+            ExecutionPayload::File { path, .. } => (self.copy_source(path, dir_path)?, None),
         };
 
         let binary_path = Self::binary_path(dir_path);
@@ -189,7 +199,7 @@ impl LanguageEngine for CEngine {
             cache_store(h, &binary_path);
         }
 
-        let run_output = self.run_binary(&binary_path)?;
+        let run_output = self.run_binary(&binary_path, args)?;
         Ok(ExecutionOutcome {
             language: self.id().to_string(),
             exit_code: run_output.status.code(),

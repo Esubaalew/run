@@ -7,7 +7,9 @@ use std::time::Instant;
 use anyhow::{Context, Result, bail};
 use tempfile::{NamedTempFile, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command,
+};
 
 pub struct TypeScriptEngine {
     executable: PathBuf,
@@ -69,10 +71,18 @@ impl LanguageEngine for TypeScriptEngine {
         }
     }
 
+    fn toolchain_version(&self) -> Result<Option<String>> {
+        let mut cmd = self.run_command();
+        cmd.arg("--version");
+        let context = format!("{}", self.binary().display());
+        run_version_command(cmd, &context)
+    }
+
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         let start = Instant::now();
+        let args = payload.args();
         let output = match payload {
-            ExecutionPayload::Inline { code } => {
+            ExecutionPayload::Inline { code, .. } => {
                 let mut script =
                     NamedTempFile::new().context("failed to create temporary TypeScript file")?;
                 script.write_all(code.as_bytes())?;
@@ -85,23 +95,26 @@ impl LanguageEngine for TypeScriptEngine {
                 cmd.arg("run")
                     .args(["--quiet", "--no-check", "--ext", "ts"])
                     .arg(script.path())
+                    .args(args)
                     .env("NO_COLOR", "1");
                 cmd.stdin(Stdio::inherit());
                 handle_deno_io(cmd.output(), self.binary(), "run Deno for inline execution")?
             }
-            ExecutionPayload::File { path } => {
+            ExecutionPayload::File { path, .. } => {
                 let mut cmd = self.run_command();
                 cmd.arg("run")
                     .args(["--quiet", "--no-check", "--ext", "ts"])
                     .arg(path)
+                    .args(args)
                     .env("NO_COLOR", "1");
                 cmd.stdin(Stdio::inherit());
                 handle_deno_io(cmd.output(), self.binary(), "run Deno for file execution")?
             }
-            ExecutionPayload::Stdin { code } => {
+            ExecutionPayload::Stdin { code, .. } => {
                 let mut cmd = self.run_command();
                 cmd.arg("run")
                     .args(["--quiet", "--no-check", "--ext", "ts", "-"])
+                    .args(args)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
