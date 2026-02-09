@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.6.1] - 2026-02-09
+
+### Fixed
+
+- Resolve CI clippy warnings (needless return, extend-with-drain, manual strip).
+- Restore Zig stdout handling for cached/compiled paths in tests.
+
 ## [0.6.0] - 2026-02-09
 
 ### Added
@@ -149,7 +156,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/esubaalew/run/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/esubaalew/run/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/esubaalew/run/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/esubaalew/run/compare/v0.4.0...v0.5.0
