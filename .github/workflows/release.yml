@@ -83,7 +83,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: run-${{ github.ref_name }}-deb
-          path: artifacts/run_*.deb
+          path: artifacts/*.deb
 
   publish-crate:
     name: Publish crate to crates.io
