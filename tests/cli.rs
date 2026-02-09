@@ -211,11 +211,7 @@ fn python_file_arguments() {
     .expect("write file");
 
     run_binary()
-        .args([
-            script.path().to_str().expect("path utf8"),
-            "Alice",
-            "Bob",
-        ])
+        .args([script.path().to_str().expect("path utf8"), "Alice", "Bob"])
         .assert()
         .success()
         .stdout(norm_contains("hello Alice Bob\n"));

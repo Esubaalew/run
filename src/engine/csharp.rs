@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command,
+};
 
 pub struct CSharpEngine {
     runtime: Option<PathBuf>,

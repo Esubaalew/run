@@ -7,7 +7,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command,
+};
 
 pub struct BashEngine {
     executable: PathBuf,

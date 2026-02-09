@@ -82,10 +82,7 @@ fn check_toolchains(registry: &LanguageRegistry) -> Result<i32> {
     Ok(0)
 }
 
-fn show_versions(
-    registry: &LanguageRegistry,
-    language: Option<LanguageSpec>,
-) -> Result<i32> {
+fn show_versions(registry: &LanguageRegistry, language: Option<LanguageSpec>) -> Result<i32> {
     println!("Language toolchain versions...\n");
 
     let mut available = 0u32;
@@ -181,7 +178,8 @@ fn execute_once(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32>
         io::stdout().flush().ok();
     }
     if !outcome.stderr.is_empty() {
-        let formatted = output::format_stderr(engine.display_name(), &outcome.stderr, outcome.success());
+        let formatted =
+            output::format_stderr(engine.display_name(), &outcome.stderr, outcome.success());
         eprint!("{formatted}");
         io::stderr().flush().ok();
     }
@@ -241,14 +239,13 @@ fn install_package(language: &LanguageSpec, package: &str) -> Result<i32> {
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
             let program = cmd.get_program().to_string_lossy();
-            eprintln!(
-                "\x1b[31m[run]\x1b[0m Package manager not found: {program}"
-            );
+            eprintln!("\x1b[31m[run]\x1b[0m Package manager not found: {program}");
             eprintln!("Tip: install it or set {override_key}=\"<cmd> {{package}}\"");
             Ok(1)
         }
         Err(err) => {
-            return Err(err).with_context(|| format!("failed to run package manager for {lang_id}"));
+            return Err(err)
+                .with_context(|| format!("failed to run package manager for {lang_id}"));
         }
     }
 }
@@ -394,11 +391,7 @@ fn watch_run(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32> {
     }
 }
 
-fn run_file_once(
-    file_path: &Path,
-    engine: &dyn crate::engine::LanguageEngine,
-    args: &[String],
-) {
+fn run_file_once(file_path: &Path, engine: &dyn crate::engine::LanguageEngine, args: &[String]) {
     let payload = ExecutionPayload::File {
         path: file_path.to_path_buf(),
         args: args.to_vec(),

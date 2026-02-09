@@ -1706,11 +1706,8 @@ fn render_outcome(outcome: &ExecutionOutcome) {
         print!("{}", ensure_trailing_newline(&outcome.stdout));
     }
     if !outcome.stderr.is_empty() {
-        let formatted = output::format_stderr(
-            &outcome.language,
-            &outcome.stderr,
-            outcome.success(),
-        );
+        let formatted =
+            output::format_stderr(&outcome.language, &outcome.stderr, outcome.success());
         eprint!("\x1b[31m{}\x1b[0m", ensure_trailing_newline(&formatted));
     }
 
@@ -2000,7 +1997,10 @@ mod tests {
         p.push_line_auto("python", "if arr[j] > arr[j+1]:");
         p.push_line_auto("python", "arr[j], arr[j+1] = arr[j+1], arr[j]");
         let code = p.take();
-        assert!(code.contains("    n = len(arr)\n"), "missing indent for len");
+        assert!(
+            code.contains("    n = len(arr)\n"),
+            "missing indent for len"
+        );
         assert!(
             code.contains("    for i in range(n):\n"),
             "missing indent for outer loop"

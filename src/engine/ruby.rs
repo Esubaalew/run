@@ -7,7 +7,9 @@ use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use super::{ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command};
+use super::{
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, run_version_command,
+};
 
 pub struct RubyEngine {
     executable: PathBuf,

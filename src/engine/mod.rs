@@ -251,9 +251,18 @@ pub(crate) fn run_version_command(mut cmd: Command, context: &str) -> Result<Opt
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionPayload {
-    Inline { code: String, args: Vec<String> },
-    File { path: std::path::PathBuf, args: Vec<String> },
-    Stdin { code: String, args: Vec<String> },
+    Inline {
+        code: String,
+        args: Vec<String>,
+    },
+    File {
+        path: std::path::PathBuf,
+        args: Vec<String>,
+    },
+    Stdin {
+        code: String,
+        args: Vec<String>,
+    },
 }
 
 impl ExecutionPayload {
