@@ -2131,9 +2131,7 @@ impl ReplState {
                         let first_line = entry.lines().next().unwrap_or(entry.as_str());
                         let is_multiline = entry.contains('\n');
                         if is_multiline {
-                            println!(
-                                "\x1b[2m[{num:>4}]\x1b[0m {first_line} \x1b[2m(...)\x1b[0m"
-                            );
+                            println!("\x1b[2m[{num:>4}]\x1b[0m {first_line} \x1b[2m(...)\x1b[0m");
                         } else {
                             println!("\x1b[2m[{num:>4}]\x1b[0m {entry}");
                         }
