@@ -1345,10 +1345,10 @@ impl ReplState {
                     _ => XMode::Verbose,
                 };
             }
-            if let Some(v) = cfg.get("precision") {
-                if let Ok(n) = v.parse::<u32>() {
-                    state.precision = Some(n.min(32));
-                }
+            if let Some(v) = cfg.get("precision")
+                && let Ok(n) = v.parse::<u32>()
+            {
+                state.precision = Some(n.min(32));
             }
             if let Some(v) = cfg.get("numbered_prompts") {
                 state.numbered_prompts = matches!(v.to_lowercase().as_str(), "on" | "true" | "1");
@@ -1391,8 +1391,8 @@ impl ReplState {
         }
 
         // Shell escape :!! (capture) and :! (inherit)
-        if command.starts_with("!!") {
-            let shell_cmd = command[2..].trim_start();
+        if let Some(stripped) = command.strip_prefix("!!") {
+            let shell_cmd = stripped.trim_start();
             if shell_cmd.is_empty() {
                 println!("usage: :!! <cmd>");
             } else {
@@ -1400,8 +1400,8 @@ impl ReplState {
             }
             return Ok(false);
         }
-        if command.starts_with('!') {
-            let shell_cmd = command[1..].trim_start();
+        if let Some(stripped) = command.strip_prefix('!') {
+            let shell_cmd = stripped.trim_start();
             if shell_cmd.is_empty() {
                 println!("usage: :! <cmd>");
             } else {
@@ -1598,10 +1598,8 @@ impl ReplState {
                             );
                         }
                     }
-                } else {
-                    if let Ok(cwd) = std::env::current_dir() {
-                        println!("{}", cwd.display());
-                    }
+                } else if let Ok(cwd) = std::env::current_dir() {
+                    println!("{}", cwd.display());
                 }
                 return Ok(false);
             }
@@ -1681,7 +1679,7 @@ impl ReplState {
                         let path = parts
                             .next()
                             .map(PathBuf::from)
-                            .or_else(|| std::env::current_dir().ok().map(PathBuf::from));
+                            .or_else(|| std::env::current_dir().ok());
                         if let Some(p) = path {
                             if p.is_absolute() {
                                 self.bookmarks.insert(name.to_string(), p.clone());
@@ -2126,20 +2124,18 @@ impl ReplState {
                             path.display()
                         );
                     }
+                } else if selected.is_empty() {
+                    println!("\x1b[2m(no history)\x1b[0m");
                 } else {
-                    if selected.is_empty() {
-                        println!("\x1b[2m(no history)\x1b[0m");
-                    } else {
-                        for (num, entry) in selected {
-                            let first_line = entry.lines().next().unwrap_or(entry.as_str());
-                            let is_multiline = entry.contains('\n');
-                            if is_multiline {
-                                println!(
-                                    "\x1b[2m[{num:>4}]\x1b[0m {first_line} \x1b[2m(...)\x1b[0m"
-                                );
-                            } else {
-                                println!("\x1b[2m[{num:>4}]\x1b[0m {entry}");
-                            }
+                    for (num, entry) in selected {
+                        let first_line = entry.lines().next().unwrap_or(entry.as_str());
+                        let is_multiline = entry.contains('\n');
+                        if is_multiline {
+                            println!(
+                                "\x1b[2m[{num:>4}]\x1b[0m {first_line} \x1b[2m(...)\x1b[0m"
+                            );
+                        } else {
+                            println!("\x1b[2m[{num:>4}]\x1b[0m {entry}");
                         }
                     }
                 }
@@ -2794,10 +2790,10 @@ fn run_shell(cmd: &str, capture: bool) {
             Ok(out) => {
                 let _ = std::io::stdout().write_all(&out.stdout);
                 let _ = std::io::stderr().write_all(&out.stderr);
-                if let Some(code) = out.status.code() {
-                    if code != 0 {
-                        println!("\x1b[2m[exit {code}]\x1b[0m");
-                    }
+                if let Some(code) = out.status.code()
+                    && code != 0
+                {
+                    println!("\x1b[2m[exit {code}]\x1b[0m");
                 }
             }
             Err(e) => {

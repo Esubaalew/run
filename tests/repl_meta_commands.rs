@@ -187,7 +187,7 @@ fn repl_history_f_file() {
         .and_then(|mut f| f.read_to_string(&mut buf))
         .is_ok()
     {
-        assert!(buf.is_empty() || buf.contains('\n') || buf.len() > 0);
+        assert!(buf.is_empty() || buf.contains('\n'));
     }
     let _ = std::fs::remove_file(&file);
 }
