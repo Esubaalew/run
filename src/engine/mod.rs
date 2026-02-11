@@ -28,7 +28,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
@@ -40,14 +41,16 @@ use crate::language::{LanguageSpec, canonical_language_id};
 // Compilation cache: hash source code -> reuse compiled binaries
 // ---------------------------------------------------------------------------
 
-use std::sync::LazyLock;
-
 static COMPILE_CACHE: LazyLock<Mutex<CompileCache>> =
     LazyLock::new(|| Mutex::new(CompileCache::new()));
+static SCCACHE_INIT: OnceLock<()> = OnceLock::new();
+static SCCACHE_READY: AtomicBool = AtomicBool::new(false);
+static PERF_COUNTERS: LazyLock<Mutex<HashMap<String, u64>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 struct CompileCache {
     dir: PathBuf,
-    entries: HashMap<u64, PathBuf>,
+    entries: HashMap<String, PathBuf>,
 }
 
 impl CompileCache {
@@ -60,12 +63,12 @@ impl CompileCache {
         }
     }
 
-    fn get(&self, hash: u64) -> Option<&PathBuf> {
-        self.entries.get(&hash).filter(|p| p.exists())
+    fn get(&self, cache_id: &str) -> Option<&PathBuf> {
+        self.entries.get(cache_id).filter(|p| p.exists())
     }
 
-    fn insert(&mut self, hash: u64, path: PathBuf) {
-        self.entries.insert(hash, path);
+    fn insert(&mut self, cache_id: String, path: PathBuf) {
+        self.entries.insert(cache_id, path);
     }
 
     fn cache_dir(&self) -> &Path {
@@ -84,19 +87,73 @@ pub fn hash_source(source: &str) -> u64 {
     hash
 }
 
-/// Look up a cached binary for the given source hash.
+
+fn cache_id(namespace: &str, source_hash: u64) -> String {
+    format!("{namespace}-{:016x}", source_hash)
+}
+
+fn cache_path(dir: &Path, namespace: &str, source_hash: u64) -> PathBuf {
+    let suffix = std::env::consts::EXE_SUFFIX;
+    let cached_name = format!("{}{}", cache_id(namespace, source_hash), suffix);
+    dir.join(cached_name)
+}
+
+fn perf_file_path() -> PathBuf {
+    std::env::temp_dir().join("run-perf-counters.csv")
+}
+
+fn read_perf_file() -> HashMap<String, u64> {
+    let path = perf_file_path();
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    let mut map = HashMap::new();
+    for line in text.lines() {
+        if let Some((key, value)) = line.split_once(',')
+            && let Ok(parsed) = value.parse::<u64>()
+        {
+            map.insert(key.to_string(), parsed);
+        }
+    }
+    map
+}
+
+fn write_perf_file(map: &HashMap<String, u64>) {
+    let mut rows = map.iter().collect::<Vec<_>>();
+    rows.sort_by(|a, b| a.0.cmp(b.0));
+    let mut buf = String::new();
+    for (key, value) in rows {
+        buf.push_str(key);
+        buf.push(',');
+        buf.push_str(&value.to_string());
+        buf.push('\n');
+    }
+    let _ = std::fs::write(perf_file_path(), buf);
+}
+
+/// Look up a cached binary for the given language namespace + source hash.
 /// Returns Some(path) if a valid cached binary exists.
-pub fn cache_lookup(source_hash: u64) -> Option<PathBuf> {
-    let cache = COMPILE_CACHE.lock().ok()?;
-    cache.get(source_hash).cloned()
+pub fn cache_lookup(namespace: &str, source_hash: u64) -> Option<PathBuf> {
+    let mut cache = COMPILE_CACHE.lock().ok()?;
+    let id = cache_id(namespace, source_hash);
+
+    if let Some(path) = cache.get(&id).cloned() {
+        return Some(path);
+    }
+
+    let disk_path = cache_path(cache.cache_dir(), namespace, source_hash);
+    if disk_path.exists() {
+        cache.insert(id, disk_path.clone());
+        return Some(disk_path);
+    }
+
+    None
 }
 
 /// Store a compiled binary in the cache. Copies the binary to the cache directory.
-pub fn cache_store(source_hash: u64, binary: &Path) -> Option<PathBuf> {
+pub fn cache_store(namespace: &str, source_hash: u64, binary: &Path) -> Option<PathBuf> {
     let mut cache = COMPILE_CACHE.lock().ok()?;
-    let suffix = std::env::consts::EXE_SUFFIX;
-    let cached_name = format!("{:016x}{}", source_hash, suffix);
-    let cached_path = cache.cache_dir().join(cached_name);
+    let cached_path = cache_path(cache.cache_dir(), namespace, source_hash);
     if std::fs::copy(binary, &cached_path).is_ok() {
         // Ensure executable permission on Unix
         #[cfg(unix)]
@@ -104,7 +161,7 @@ pub fn cache_store(source_hash: u64, binary: &Path) -> Option<PathBuf> {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&cached_path, std::fs::Permissions::from_mode(0o755));
         }
-        cache.insert(source_hash, cached_path.clone());
+        cache.insert(cache_id(namespace, source_hash), cached_path.clone());
         Some(cached_path)
     } else {
         None
@@ -112,13 +169,113 @@ pub fn cache_store(source_hash: u64, binary: &Path) -> Option<PathBuf> {
 }
 
 /// Execute a cached binary, returning the Output. Returns None if no cache entry.
-pub fn try_cached_execution(source_hash: u64) -> Option<std::process::Output> {
-    let cached = cache_lookup(source_hash)?;
+pub fn try_cached_execution(namespace: &str, source_hash: u64) -> Option<std::process::Output> {
+    let cached = cache_lookup(namespace, source_hash)?;
     let mut cmd = std::process::Command::new(&cached);
     cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .stdin(std::process::Stdio::inherit());
     cmd.output().ok()
+}
+
+/// Build a compiler command with optional daemon/cache wrappers.
+///
+/// Behavior controlled by RUN_COMPILER_DAEMON:
+/// - off: use raw compiler
+/// - ccache: force ccache wrapper
+/// - sccache: force sccache wrapper
+/// - auto (default): prefer sccache, then ccache, else raw compiler
+pub fn compiler_command(compiler: &Path) -> Command {
+    let mode = std::env::var("RUN_COMPILER_DAEMON")
+        .unwrap_or_else(|_| "adaptive".to_string())
+        .to_ascii_lowercase();
+    if mode == "off" {
+        perf_record("global", "compiler.raw");
+        return Command::new(compiler);
+    }
+
+    let want_sccache = mode == "sccache" || mode == "auto" || mode == "adaptive";
+    if want_sccache && let Ok(sccache) = which::which("sccache") {
+        if mode == "adaptive" && !SCCACHE_READY.load(Ordering::Relaxed) {
+            let _ = SCCACHE_INIT.get_or_init(|| {
+                let sccache_clone = sccache.clone();
+                std::thread::spawn(move || {
+                    let ready = std::process::Command::new(&sccache_clone)
+                        .arg("--start-server")
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .status()
+                        .is_ok_and(|s| s.success());
+                    if ready {
+                        SCCACHE_READY.store(true, Ordering::Relaxed);
+                    }
+                });
+            });
+            perf_record("global", "compiler.raw.adaptive_warmup");
+            return Command::new(compiler);
+        }
+        let _ = SCCACHE_INIT.get_or_init(|| {
+            let ready = std::process::Command::new(&sccache)
+                .arg("--start-server")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success());
+            if ready {
+                SCCACHE_READY.store(true, Ordering::Relaxed);
+            }
+        });
+        let mut cmd = Command::new(sccache);
+        cmd.arg(compiler);
+        perf_record("global", "compiler.sccache");
+        return cmd;
+    }
+
+    let want_ccache = mode == "ccache" || mode == "auto" || mode == "adaptive";
+    if want_ccache && let Ok(ccache) = which::which("ccache") {
+        let mut cmd = Command::new(ccache);
+        cmd.arg(compiler);
+        perf_record("global", "compiler.ccache");
+        return cmd;
+    }
+
+    perf_record("global", "compiler.raw.fallback");
+    Command::new(compiler)
+}
+
+pub fn perf_record(language: &str, event: &str) {
+    let key = format!("{language}.{event}");
+    if let Ok(mut counters) = PERF_COUNTERS.lock() {
+        let entry = counters.entry(key).or_insert(0);
+        *entry += 1;
+        let mut disk = read_perf_file();
+        let disk_entry = disk.entry(language.to_string() + "." + event).or_insert(0);
+        *disk_entry += 1;
+        write_perf_file(&disk);
+    }
+}
+
+pub fn perf_snapshot() -> Vec<(String, u64)> {
+    let disk = read_perf_file();
+    let mut rows = if !disk.is_empty() {
+        disk.into_iter().collect::<Vec<_>>()
+    } else if let Ok(counters) = PERF_COUNTERS.lock() {
+        counters
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    rows
+}
+
+pub fn perf_reset() {
+    if let Ok(mut counters) = PERF_COUNTERS.lock() {
+        counters.clear();
+    }
+    let _ = std::fs::remove_file(perf_file_path());
 }
 
 /// Default execution timeout: 60 seconds.
@@ -140,7 +297,7 @@ pub fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<std::pro
     loop {
         match child.try_wait() {
             Ok(Some(_status)) => {
-                // Process finished — collect output
+                
                 return child.wait_with_output().map_err(Into::into);
             }
             Ok(None) => {

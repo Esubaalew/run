@@ -44,6 +44,8 @@ pub enum Command {
     Watch {
         spec: ExecutionSpec,
     },
+    PerfReport,
+    PerfReset,
 }
 
 pub fn parse() -> Result<Command> {
@@ -51,6 +53,12 @@ pub fn parse() -> Result<Command> {
 
     if cli.version {
         return Ok(Command::ShowVersion);
+    }
+    if cli.perf_report {
+        return Ok(Command::PerfReport);
+    }
+    if cli.perf_reset {
+        return Ok(Command::PerfReset);
     }
     if cli.check {
         return Ok(Command::CheckToolchains);
@@ -212,11 +220,18 @@ pub fn parse() -> Result<Command> {
         }
     }
 
-    if source.is_none() {
+    if source.is_none() && !cli.interactive {
         let stdin = std::io::stdin();
         if !stdin.is_terminal() {
             source = Some(InputSource::Stdin);
         }
+    }
+
+    if cli.interactive {
+        return Ok(Command::Repl {
+            initial_language: language,
+            detect_language,
+        });
     }
 
     if language.is_some() && !cli.no_detect {
@@ -314,6 +329,18 @@ struct Cli {
     /// Watch a file and re-execute on changes
     #[arg(short = 'w', long = "watch", action = clap::ArgAction::SetTrue)]
     watch: bool,
+
+    /// Show in-memory performance counters collected in this process
+    #[arg(long = "perf-report", action = clap::ArgAction::SetTrue)]
+    perf_report: bool,
+
+    /// Reset in-memory performance counters in this process
+    #[arg(long = "perf-reset", action = clap::ArgAction::SetTrue)]
+    perf_reset: bool,
+
+    /// Force REPL (interactive) mode even when stdin is not a TTY (e.g. piped input)
+    #[arg(short = 'i', long = "interactive", action = clap::ArgAction::SetTrue)]
+    interactive: bool,
 
     #[arg(value_name = "ARGS", trailing_var_arg = true)]
     args: Vec<String>,

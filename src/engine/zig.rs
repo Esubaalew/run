@@ -126,7 +126,7 @@ impl LanguageEngine for ZigEngine {
         } {
             let snippet = wrap_inline_snippet(code);
             let src_hash = hash_source(&snippet);
-            if let Some(output) = try_cached_execution(src_hash) {
+            if let Some(output) = try_cached_execution("zig", src_hash) {
                 let start = Instant::now();
                 let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
                 let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -188,7 +188,7 @@ impl LanguageEngine for ZigEngine {
                 && build_output.status.success()
                 && bin_path.exists()
             {
-                cache_store(h, &bin_path);
+                cache_store("zig", h, &bin_path);
                 let mut run_cmd = Command::new(&bin_path);
                 run_cmd
                     .args(args)

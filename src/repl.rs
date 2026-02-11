@@ -1,6 +1,9 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use rustyline::completion::{Completer, Pair};
@@ -19,6 +22,20 @@ use crate::language::LanguageSpec;
 use crate::output;
 
 const HISTORY_FILE: &str = ".run_history";
+const BOOKMARKS_FILE: &str = ".run_bookmarks";
+const REPL_CONFIG_FILE: &str = ".run_repl_config";
+const MAX_DIR_STACK: usize = 20;
+
+/// Exception/stderr display mode for the REPL.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum XMode {
+    /// First line of stderr only (compact).
+    Plain,
+    /// First few lines (e.g. 5) for context.
+    Context,
+    /// Full stderr (default).
+    Verbose,
+}
 
 struct ReplHelper {
     language_id: String,
@@ -43,20 +60,130 @@ impl ReplHelper {
 }
 
 const META_COMMANDS: &[&str] = &[
+    ":! ",
+    ":!! ",
     ":help",
+    ":help ",
+    ":? ",
+    ":debug",
+    ":debug ",
+    ":commands",
+    ":quickref",
     ":exit",
     ":quit",
     ":languages",
     ":lang ",
     ":detect ",
     ":reset",
+    ":cd ",
+    ":cd -b ",
+    ":dhist",
+    ":bookmark ",
+    ":bookmark -l",
+    ":bookmark -d ",
+    ":env",
+    ":last",
     ":load ",
+    ":edit",
+    ":edit ",
     ":run ",
+    ":logstart",
+    ":logstart ",
+    ":logstop",
+    ":logstate",
+    ":macro ",
+    ":macro run ",
+    ":time ",
+    ":who",
+    ":whos",
+    ":whos ",
+    ":xmode",
+    ":xmode ",
+    ":config",
+    ":config ",
+    ":paste",
+    ":end",
+    ":precision",
+    ":precision ",
     ":save ",
     ":history",
     ":install ",
     ":bench ",
     ":type",
+];
+
+/// (name without colon, one-line description) for :help, :commands, :quickref, :help :cmd
+const CMD_HELP: &[(&str, &str)] = &[
+    ("help", "Show this help"),
+    (
+        "?",
+        "Show doc/source for name (e.g. :? print); Python session only",
+    ),
+    (
+        "debug",
+        "Run last snippet or :debug CODE under debugger (Python: pdb)",
+    ),
+    ("lang", "Switch language"),
+    ("languages", "List available languages"),
+    ("versions", "Show toolchain versions"),
+    ("detect", "Toggle auto language detection"),
+    ("reset", "Clear current session state"),
+    (
+        "cd",
+        "Change directory; :cd - = previous, :cd -b <name> = bookmark",
+    ),
+    ("dhist", "Directory history (default 10)"),
+    ("bookmark", "Save bookmark; -l list, -d <name> delete"),
+    ("env", "List env, get VAR, or set VAR=val"),
+    ("load", "Load and execute a file or http(s) URL"),
+    ("last", "Print last execution stdout"),
+    ("edit", "Open $EDITOR; on save, execute in current session"),
+    ("run", "Load file/URL or run macro by name"),
+    (
+        "logstart",
+        "Start logging input to file (default: run_log.txt)",
+    ),
+    ("logstop", "Stop logging"),
+    ("logstate", "Show whether logging and path"),
+    (
+        "macro",
+        "Save history range as macro; :macro run NAME to run",
+    ),
+    ("time", "Run code once and print elapsed time"),
+    ("who", "List names tracked in current session"),
+    ("whos", "Like :who with optional name filter"),
+    ("save", "Save session history to file"),
+    (
+        "history",
+        "Show history; -g PATTERN, -f FILE, 4-6 or 4- or -6",
+    ),
+    ("install", "Install a package for current language"),
+    ("bench", "Benchmark code N times (default: 10)"),
+    ("type", "Show current language and session status"),
+    ("!", "Run shell command (inherit stdout/stderr)"),
+    ("!!", "Run shell command and print captured output"),
+    ("exit", "Leave the REPL"),
+    ("quit", "Leave the REPL"),
+    (
+        "xmode",
+        "Exception display: plain (first line) | context (5 lines) | verbose (full)",
+    ),
+    (
+        "config",
+        "Get/set REPL config (detect, xmode); persists in ~/.run_repl_config",
+    ),
+    (
+        "paste",
+        "Paste mode: collect lines until :end or Ctrl-D, then execute (strip >>> / ...)",
+    ),
+    (
+        "end",
+        "End paste mode and execute buffer (only in paste mode)",
+    ),
+    (
+        "precision",
+        "Float display precision (0–32) for last result; :precision N to set, persists in config",
+    ),
 ];
 
 fn language_keywords(lang: &str) -> &'static [&'static str] {
@@ -638,6 +765,7 @@ pub fn run_repl(
                     if !trimmed.is_empty() {
                         let _ = editor.add_history_entry(trimmed);
                         state.history_entries.push(trimmed.to_string());
+                        state.log_input(trimmed);
                         state.execute_snippet(trimmed)?;
                         if let Some(helper) = editor.helper_mut() {
                             helper.update_session_vars(state.session_var_names());
@@ -650,9 +778,32 @@ pub fn run_repl(
                     continue;
                 }
 
+                if state.paste_buffer.is_some() {
+                    if raw.trim() == ":end" {
+                        let lines = state.paste_buffer.take().unwrap();
+                        let code = strip_paste_prompts(&lines);
+                        if !code.trim().is_empty() {
+                            let _ = editor.add_history_entry(code.trim());
+                            state.history_entries.push(code.trim().to_string());
+                            state.log_input(code.trim());
+                            if let Err(e) = state.execute_snippet(code.trim()) {
+                                println!("\x1b[31m[run]\x1b[0m {e}");
+                            }
+                            if let Some(helper) = editor.helper_mut() {
+                                helper.update_session_vars(state.session_var_names());
+                            }
+                        }
+                        println!("\x1b[2m[paste done]\x1b[0m");
+                    } else {
+                        state.paste_buffer.as_mut().unwrap().push(raw.to_string());
+                    }
+                    continue;
+                }
+
                 if raw.trim_start().starts_with(':') {
                     let trimmed = raw.trim();
                     let _ = editor.add_history_entry(trimmed);
+                    state.log_input(trimmed);
                     if state.handle_meta(trimmed)? {
                         break;
                     }
@@ -669,6 +820,7 @@ pub fn run_repl(
                 let trimmed = raw.trim_end();
                 let _ = editor.add_history_entry(trimmed);
                 state.history_entries.push(trimmed.to_string());
+                state.log_input(trimmed);
                 state.execute_snippet(trimmed)?;
                 if let Some(helper) = editor.helper_mut() {
                     helper.update_session_vars(state.session_var_names());
@@ -680,6 +832,18 @@ pub fn run_repl(
                 continue;
             }
             Err(ReadlineError::Eof) => {
+                if let Some(lines) = state.paste_buffer.take() {
+                    let code = strip_paste_prompts(&lines);
+                    if !code.trim().is_empty() {
+                        let _ = editor.add_history_entry(code.trim());
+                        state.history_entries.push(code.trim().to_string());
+                        state.log_input(code.trim());
+                        if let Err(e) = state.execute_snippet(code.trim()) {
+                            println!("\x1b[31m[run]\x1b[0m {e}");
+                        }
+                    }
+                    println!("\x1b[2m[paste done]\x1b[0m");
+                }
                 println!("bye");
                 break;
             }
@@ -704,6 +868,21 @@ struct ReplState {
     detect_enabled: bool,
     defined_names: HashSet<String>,
     history_entries: Vec<String>,
+    dir_stack: Vec<PathBuf>,
+    bookmarks: HashMap<String, PathBuf>,
+    log_path: Option<PathBuf>,
+    macros: HashMap<String, String>,
+    xmode: XMode,
+    /// When Some, we are in paste mode; lines are collected until :end or Ctrl-D.
+    paste_buffer: Option<Vec<String>>,
+    /// Float display precision for last result (when we show it). None = default.
+    precision: Option<u32>,
+    /// In[n] counter for numbered prompts (e.g. python [3]>>>).
+    in_count: usize,
+    /// Last execution stdout, for :last.
+    last_stdout: Option<String>,
+    /// Whether to show [n] in prompt (config: numbered_prompts).
+    numbered_prompts: bool,
 }
 
 struct PendingInput {
@@ -1136,6 +1315,7 @@ impl ReplState {
         registry: LanguageRegistry,
         detect_enabled: bool,
     ) -> Result<Self> {
+        let bookmarks = load_bookmarks().unwrap_or_default();
         let mut state = Self {
             registry,
             sessions: HashMap::new(),
@@ -1143,7 +1323,37 @@ impl ReplState {
             detect_enabled,
             defined_names: HashSet::new(),
             history_entries: Vec::new(),
+            dir_stack: Vec::new(),
+            bookmarks,
+            log_path: None,
+            macros: HashMap::new(),
+            xmode: XMode::Verbose,
+            paste_buffer: None,
+            precision: None,
+            in_count: 0,
+            last_stdout: None,
+            numbered_prompts: false,
         };
+        if let Ok(cfg) = load_repl_config() {
+            if let Some(v) = cfg.get("detect") {
+                state.detect_enabled = matches!(v.to_lowercase().as_str(), "on" | "true" | "1");
+            }
+            if let Some(v) = cfg.get("xmode") {
+                state.xmode = match v.to_lowercase().as_str() {
+                    "plain" => XMode::Plain,
+                    "context" => XMode::Context,
+                    _ => XMode::Verbose,
+                };
+            }
+            if let Some(v) = cfg.get("precision") {
+                if let Ok(n) = v.parse::<u32>() {
+                    state.precision = Some(n.min(32));
+                }
+            }
+            if let Some(v) = cfg.get("numbered_prompts") {
+                state.numbered_prompts = matches!(v.to_lowercase().as_str(), "on" | "true" | "1");
+            }
+        }
         state.ensure_current_language()?;
         Ok(state)
     }
@@ -1153,7 +1363,15 @@ impl ReplState {
     }
 
     fn prompt(&self) -> String {
-        format!("{}>>> ", self.current_language.canonical_id())
+        if self.numbered_prompts {
+            format!(
+                "{} [{}]>>> ",
+                self.current_language.canonical_id(),
+                self.in_count + 1
+            )
+        } else {
+            format!("{}>>> ", self.current_language.canonical_id())
+        }
     }
 
     fn ensure_current_language(&mut self) -> Result<()> {
@@ -1172,6 +1390,26 @@ impl ReplState {
             return Ok(false);
         }
 
+        // Shell escape :!! (capture) and :! (inherit)
+        if command.starts_with("!!") {
+            let shell_cmd = command[2..].trim_start();
+            if shell_cmd.is_empty() {
+                println!("usage: :!! <cmd>");
+            } else {
+                run_shell(shell_cmd, true);
+            }
+            return Ok(false);
+        }
+        if command.starts_with('!') {
+            let shell_cmd = command[1..].trim_start();
+            if shell_cmd.is_empty() {
+                println!("usage: :! <cmd>");
+            } else {
+                run_shell(shell_cmd, false);
+            }
+            return Ok(false);
+        }
+
         let mut parts = command.split_whitespace();
         let Some(head) = parts.next() else {
             return Ok(false);
@@ -1179,7 +1417,57 @@ impl ReplState {
         match head {
             "exit" | "quit" => return Ok(true),
             "help" => {
-                self.print_help();
+                if let Some(arg) = parts.next() {
+                    Self::print_cmd_help(arg);
+                } else {
+                    self.print_help();
+                }
+                return Ok(false);
+            }
+            "commands" => {
+                Self::print_commands_machine();
+                return Ok(false);
+            }
+            "quickref" => {
+                Self::print_quickref();
+                return Ok(false);
+            }
+            "?" => {
+                let expr = parts.collect::<Vec<_>>().join(" ").trim().to_string();
+                if expr.is_empty() {
+                    println!(
+                        "usage: :? <name>  — show doc/source for <name> (e.g. :? print). Supported in Python session."
+                    );
+                } else if !expr
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+                {
+                    println!(
+                        "\x1b[31m[run]\x1b[0m :? only accepts names (letters, digits, dots, underscores)."
+                    );
+                } else if let Err(e) = self.run_introspect(&expr) {
+                    println!("\x1b[31m[run]\x1b[0m {e}");
+                }
+                return Ok(false);
+            }
+            "debug" => {
+                let rest: String = parts.collect::<Vec<_>>().join(" ");
+                let code = rest.trim();
+                let code = if code.is_empty() {
+                    self.history_entries
+                        .last()
+                        .map(String::as_str)
+                        .unwrap_or("")
+                } else {
+                    code
+                };
+                if code.is_empty() {
+                    println!(
+                        "usage: :debug [CODE]  — run last snippet (or CODE) under debugger. Python: pdb."
+                    );
+                } else if let Err(e) = self.run_debug(code) {
+                    println!("\x1b[31m[run]\x1b[0m {e}");
+                }
                 return Ok(false);
             }
             "languages" => {
@@ -1255,15 +1543,487 @@ impl ReplState {
                 );
                 return Ok(false);
             }
+            "cd" => {
+                let arg = parts.next();
+                if let Some("-b") = arg {
+                    if let Some(name) = parts.next() {
+                        if let Some(path) = self.bookmarks.get(name) {
+                            if let Ok(cwd) = std::env::current_dir() {
+                                if self.dir_stack.len() < MAX_DIR_STACK {
+                                    self.dir_stack.push(cwd);
+                                } else {
+                                    self.dir_stack.remove(0);
+                                    self.dir_stack.push(cwd);
+                                }
+                            }
+                            if std::env::set_current_dir(path).is_ok() {
+                                println!("{}", path.display());
+                            } else {
+                                println!(
+                                    "\x1b[31m[run]\x1b[0m cd: {}: no such directory",
+                                    path.display()
+                                );
+                            }
+                        } else {
+                            println!("\x1b[31m[run]\x1b[0m bookmark '{}' not found", name);
+                        }
+                    } else {
+                        println!("usage: :cd -b <bookmark>");
+                    }
+                } else if let Some(dir) = arg {
+                    if dir == "-" {
+                        if let Some(prev) = self.dir_stack.pop() {
+                            if std::env::set_current_dir(&prev).is_ok() {
+                                println!("{}", prev.display());
+                            }
+                        } else {
+                            println!("\x1b[2m[run]\x1b[0m directory stack empty");
+                        }
+                    } else {
+                        let path = PathBuf::from(dir);
+                        if let Ok(cwd) = std::env::current_dir() {
+                            if self.dir_stack.len() < MAX_DIR_STACK {
+                                self.dir_stack.push(cwd);
+                            } else {
+                                self.dir_stack.remove(0);
+                                self.dir_stack.push(cwd);
+                            }
+                        }
+                        if std::env::set_current_dir(&path).is_ok() {
+                            println!("{}", path.display());
+                        } else {
+                            println!(
+                                "\x1b[31m[run]\x1b[0m cd: {}: no such directory",
+                                path.display()
+                            );
+                        }
+                    }
+                } else {
+                    if let Ok(cwd) = std::env::current_dir() {
+                        println!("{}", cwd.display());
+                    }
+                }
+                return Ok(false);
+            }
+            "dhist" => {
+                let n: usize = parts.next().and_then(|s| s.parse().ok()).unwrap_or(10);
+                let len = self.dir_stack.len();
+                let start = len.saturating_sub(n);
+                if self.dir_stack.is_empty() {
+                    println!("\x1b[2m(no directory history)\x1b[0m");
+                } else {
+                    for (i, p) in self.dir_stack[start..].iter().enumerate() {
+                        let num = start + i + 1;
+                        println!("\x1b[2m[{num:>2}]\x1b[0m {}", p.display());
+                    }
+                }
+                return Ok(false);
+            }
+            "env" => {
+                let a = parts.next();
+                let b = parts.next();
+                match (a, b) {
+                    (None, _) => {
+                        let vars: BTreeMap<String, String> = std::env::vars().collect();
+                        for (k, v) in vars {
+                            println!("{k}={v}");
+                        }
+                    }
+                    (Some(var), None) => {
+                        if let Some((k, v)) = var.split_once('=') {
+                            unsafe { std::env::set_var(k, v) };
+                        } else if let Ok(v) = std::env::var(var) {
+                            println!("{v}");
+                        }
+                    }
+                    (Some(var), Some(val)) => {
+                        if val == "=" {
+                            if let Some(v) = parts.next() {
+                                unsafe { std::env::set_var(var, v) };
+                            }
+                        } else if val.starts_with('=') {
+                            unsafe { std::env::set_var(var, val.trim_start_matches('=')) };
+                        } else {
+                            unsafe { std::env::set_var(var, val) };
+                        }
+                    }
+                }
+                return Ok(false);
+            }
+            "bookmark" => {
+                let arg = parts.next();
+                match arg {
+                    Some("-l") => {
+                        if self.bookmarks.is_empty() {
+                            println!("\x1b[2m(no bookmarks)\x1b[0m");
+                        } else {
+                            let mut names: Vec<_> = self.bookmarks.keys().collect();
+                            names.sort();
+                            for name in names {
+                                let path = self.bookmarks.get(name).unwrap();
+                                println!("  {name}\t{}", path.display());
+                            }
+                        }
+                    }
+                    Some("-d") => {
+                        if let Some(name) = parts.next() {
+                            if self.bookmarks.remove(name).is_some() {
+                                let _ = save_bookmarks(&self.bookmarks);
+                                println!("\x1b[2m[removed bookmark '{name}']\x1b[0m");
+                            } else {
+                                println!("\x1b[31m[run]\x1b[0m bookmark '{}' not found", name);
+                            }
+                        } else {
+                            println!("usage: :bookmark -d <name>");
+                        }
+                    }
+                    Some(name) if !name.starts_with('-') => {
+                        let path = parts
+                            .next()
+                            .map(PathBuf::from)
+                            .or_else(|| std::env::current_dir().ok().map(PathBuf::from));
+                        if let Some(p) = path {
+                            if p.is_absolute() {
+                                self.bookmarks.insert(name.to_string(), p.clone());
+                                let _ = save_bookmarks(&self.bookmarks);
+                                println!("\x1b[2m[bookmark '{name}' -> {}]\x1b[0m", p.display());
+                            } else {
+                                println!("\x1b[31m[run]\x1b[0m bookmark path must be absolute");
+                            }
+                        } else {
+                            println!("\x1b[31m[run]\x1b[0m could not get current directory");
+                        }
+                    }
+                    _ => {
+                        println!(
+                            "usage: :bookmark <name> [path] | :bookmark -l | :bookmark -d <name>"
+                        );
+                    }
+                }
+                return Ok(false);
+            }
             "load" | "run" => {
                 if let Some(token) = parts.next() {
-                    let path = PathBuf::from(token);
+                    if let Some(code) = self.macros.get(token) {
+                        self.execute_payload(ExecutionPayload::Inline {
+                            code: code.clone(),
+                            args: Vec::new(),
+                        })?;
+                    } else {
+                        let path = if token.starts_with("http://") || token.starts_with("https://")
+                        {
+                            match fetch_url_to_temp(token) {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    println!("\x1b[31m[run]\x1b[0m fetch failed: {e}");
+                                    return Ok(false);
+                                }
+                            }
+                        } else {
+                            PathBuf::from(token)
+                        };
+                        self.execute_payload(ExecutionPayload::File {
+                            path,
+                            args: Vec::new(),
+                        })?;
+                    }
+                } else {
+                    println!("usage: :load <path|url>  or  :run <macro|path|url>");
+                }
+                return Ok(false);
+            }
+            "edit" => {
+                let path = if let Some(token) = parts.next() {
+                    PathBuf::from(token)
+                } else {
+                    match edit_temp_file() {
+                        Ok(p) => p,
+                        Err(e) => {
+                            println!("\x1b[31m[run]\x1b[0m edit: {e}");
+                            return Ok(false);
+                        }
+                    }
+                };
+                if run_editor(path.as_path()).is_err() {
+                    println!("\x1b[31m[run]\x1b[0m editor failed or $EDITOR not set");
+                    return Ok(false);
+                }
+                if path.exists() {
                     self.execute_payload(ExecutionPayload::File {
                         path,
                         args: Vec::new(),
                     })?;
+                }
+                return Ok(false);
+            }
+            "last" => {
+                if let Some(ref s) = self.last_stdout {
+                    print!("{}", ensure_trailing_newline(s));
                 } else {
-                    println!("usage: :load <path>");
+                    println!("\x1b[2m(no last output)\x1b[0m");
+                }
+                return Ok(false);
+            }
+            "logstart" => {
+                let path = parts.next().map(PathBuf::from).unwrap_or_else(|| {
+                    std::env::current_dir()
+                        .unwrap_or_else(|_| PathBuf::from("."))
+                        .join("run_log.txt")
+                });
+                self.log_path = Some(path.clone());
+                self.log_input(line);
+                println!("\x1b[2m[logging to {}]\x1b[0m", path.display());
+                return Ok(false);
+            }
+            "logstop" => {
+                if self.log_path.take().is_some() {
+                    println!("\x1b[2m[logging stopped]\x1b[0m");
+                } else {
+                    println!("\x1b[2m(not logging)\x1b[0m");
+                }
+                return Ok(false);
+            }
+            "logstate" => {
+                if let Some(ref p) = self.log_path {
+                    println!("\x1b[2mlogging: {}\x1b[0m", p.display());
+                } else {
+                    println!("\x1b[2m(not logging)\x1b[0m");
+                }
+                return Ok(false);
+            }
+            "macro" => {
+                let sub = parts.next();
+                if sub == Some("run") {
+                    if let Some(name) = parts.next() {
+                        if let Some(code) = self.macros.get(name) {
+                            self.execute_payload(ExecutionPayload::Inline {
+                                code: code.clone(),
+                                args: Vec::new(),
+                            })?;
+                        } else {
+                            println!("\x1b[31m[run]\x1b[0m unknown macro: {name}");
+                        }
+                    } else {
+                        println!("usage: :macro run <NAME>");
+                    }
+                } else if let Some(name) = sub {
+                    let len = self.history_entries.len();
+                    let mut indices: Vec<usize> = Vec::new();
+                    for part in parts {
+                        let (s, e) = parse_history_range(part, len);
+                        for i in s..e {
+                            indices.push(i);
+                        }
+                    }
+                    indices.sort_unstable();
+                    indices.dedup();
+                    let code: String = indices
+                        .into_iter()
+                        .filter_map(|i| self.history_entries.get(i))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if code.is_empty() {
+                        println!("\x1b[31m[run]\x1b[0m no history entries for range");
+                    } else {
+                        self.macros.insert(name.to_string(), code);
+                        println!("\x1b[2m[macro '{name}' saved]\x1b[0m");
+                    }
+                } else {
+                    println!("usage: :macro <NAME> <range>...  or  :macro run <NAME>");
+                }
+                return Ok(false);
+            }
+            "time" => {
+                let code = parts.collect::<Vec<_>>().join(" ").trim().to_string();
+                if code.is_empty() {
+                    println!("usage: :time <CODE>");
+                    return Ok(false);
+                }
+                let start = Instant::now();
+                self.execute_payload(ExecutionPayload::Inline {
+                    code,
+                    args: Vec::new(),
+                })?;
+                let elapsed = start.elapsed();
+                println!("\x1b[2m[elapsed: {:?}]\x1b[0m", elapsed);
+                return Ok(false);
+            }
+            "who" => {
+                let mut names: Vec<_> = self.defined_names.iter().cloned().collect();
+                names.sort();
+                if names.is_empty() {
+                    println!("\x1b[2m(no names tracked)\x1b[0m");
+                } else {
+                    for n in &names {
+                        println!("  {n}");
+                    }
+                }
+                return Ok(false);
+            }
+            "whos" => {
+                let pattern = parts.next();
+                let mut names: Vec<_> = self.defined_names.iter().cloned().collect();
+                if let Some(pat) = pattern {
+                    names.retain(|n| n.contains(pat));
+                }
+                names.sort();
+                if names.is_empty() {
+                    println!("\x1b[2m(no names tracked)\x1b[0m");
+                } else {
+                    for n in &names {
+                        println!("  {n}");
+                    }
+                }
+                return Ok(false);
+            }
+            "xmode" => {
+                match parts.next().map(|s| s.to_lowercase()) {
+                    Some(ref m) if m == "plain" => self.xmode = XMode::Plain,
+                    Some(ref m) if m == "context" => self.xmode = XMode::Context,
+                    Some(ref m) if m == "verbose" => self.xmode = XMode::Verbose,
+                    _ => {
+                        let current = match self.xmode {
+                            XMode::Plain => "plain",
+                            XMode::Context => "context",
+                            XMode::Verbose => "verbose",
+                        };
+                        println!(
+                            "\x1b[2mexception display: {current} (plain | context | verbose)\x1b[0m"
+                        );
+                    }
+                }
+                return Ok(false);
+            }
+            "paste" => {
+                self.paste_buffer = Some(Vec::new());
+                println!("\x1b[2m[paste mode — type :end or Ctrl-D to execute]\x1b[0m");
+                return Ok(false);
+            }
+            "end" => {
+                if self.paste_buffer.is_some() {
+                    // Handled in main loop (needs editor); show message if somehow we get here
+                    println!("\x1b[2m[paste done]\x1b[0m");
+                } else {
+                    println!("\x1b[31m[run]\x1b[0m not in paste mode");
+                }
+                return Ok(false);
+            }
+            "precision" => {
+                match parts.next() {
+                    None => match self.precision {
+                        Some(n) => println!("\x1b[2mprecision: {n}\x1b[0m"),
+                        None => println!("\x1b[2mprecision: (default)\x1b[0m"),
+                    },
+                    Some(s) => {
+                        if let Ok(n) = s.parse::<u32>() {
+                            let n = n.min(32);
+                            self.precision = Some(n);
+                            let mut cfg = load_repl_config().unwrap_or_default();
+                            cfg.insert("precision".to_string(), n.to_string());
+                            if save_repl_config(&cfg).is_err() {
+                                println!("\x1b[31m[run]\x1b[0m failed to save config");
+                            } else {
+                                println!("\x1b[2m[precision = {n}]\x1b[0m");
+                            }
+                        } else {
+                            println!("\x1b[31m[run]\x1b[0m precision must be a number (0–32)");
+                        }
+                    }
+                }
+                return Ok(false);
+            }
+            "config" => {
+                let key = parts.next().map(|s| s.to_lowercase());
+                let val = parts.next();
+                match (key.as_deref(), val) {
+                    (None, _) => {
+                        let detect = if self.detect_enabled { "on" } else { "off" };
+                        let xmode = match self.xmode {
+                            XMode::Plain => "plain",
+                            XMode::Context => "context",
+                            XMode::Verbose => "verbose",
+                        };
+                        let precision = self
+                            .precision
+                            .map(|n| n.to_string())
+                            .unwrap_or_else(|| "default".to_string());
+                        let numbered = if self.numbered_prompts { "on" } else { "off" };
+                        println!("\x1b[2mdetect\t{detect}\x1b[0m");
+                        println!("\x1b[2mxmode\t{xmode}\x1b[0m");
+                        println!("\x1b[2mprecision\t{precision}\x1b[0m");
+                        println!("\x1b[2mnumbered_prompts\t{numbered}\x1b[0m");
+                    }
+                    (Some(k), None) => {
+                        let v: Option<String> = match k {
+                            "detect" => {
+                                Some(if self.detect_enabled { "on" } else { "off" }.to_string())
+                            }
+                            "xmode" => Some(
+                                match self.xmode {
+                                    XMode::Plain => "plain",
+                                    XMode::Context => "context",
+                                    XMode::Verbose => "verbose",
+                                }
+                                .to_string(),
+                            ),
+                            "precision" => Some(
+                                self.precision
+                                    .map(|n| n.to_string())
+                                    .unwrap_or_else(|| "default".to_string()),
+                            ),
+                            "numbered_prompts" => {
+                                Some(if self.numbered_prompts { "on" } else { "off" }.to_string())
+                            }
+                            _ => None,
+                        };
+                        if let Some(v) = v {
+                            println!("{v}");
+                        } else {
+                            println!("\x1b[31m[run]\x1b[0m unknown config key: {k}");
+                        }
+                    }
+                    (Some(k), Some(v)) => {
+                        let mut cfg = load_repl_config().unwrap_or_default();
+                        match k {
+                            "detect" => {
+                                self.detect_enabled =
+                                    matches!(v.to_lowercase().as_str(), "on" | "true" | "1");
+                                cfg.insert("detect".to_string(), v.to_string());
+                            }
+                            "xmode" => {
+                                self.xmode = match v.to_lowercase().as_str() {
+                                    "plain" => XMode::Plain,
+                                    "context" => XMode::Context,
+                                    _ => XMode::Verbose,
+                                };
+                                cfg.insert("xmode".to_string(), v.to_string());
+                            }
+                            "precision" => {
+                                if let Ok(n) = v.parse::<u32>() {
+                                    self.precision = Some(n.min(32));
+                                    cfg.insert(
+                                        "precision".to_string(),
+                                        self.precision.unwrap().to_string(),
+                                    );
+                                }
+                            }
+                            "numbered_prompts" => {
+                                self.numbered_prompts =
+                                    matches!(v.to_lowercase().as_str(), "on" | "true" | "1");
+                                cfg.insert("numbered_prompts".to_string(), v.to_string());
+                            }
+                            _ => {
+                                println!("\x1b[31m[run]\x1b[0m unknown config key: {k}");
+                                return Ok(false);
+                            }
+                        }
+                        if save_repl_config(&cfg).is_err() {
+                            println!("\x1b[31m[run]\x1b[0m failed to save config");
+                        } else {
+                            println!("\x1b[2m[{k} = {}]\x1b[0m", v.trim());
+                        }
+                    }
                 }
                 return Ok(false);
             }
@@ -1283,8 +2043,106 @@ impl ReplState {
                 return Ok(false);
             }
             "history" => {
-                let limit: usize = parts.next().and_then(|s| s.parse().ok()).unwrap_or(25);
-                self.show_history(limit);
+                let rest: Vec<&str> = parts.collect();
+                let mut grep_pattern: Option<&str> = None;
+                let mut out_file: Option<&str> = None;
+                let mut unique = false;
+                let mut range_or_limit: Option<String> = None;
+                let mut i = 0;
+                while i < rest.len() {
+                    match rest[i] {
+                        "-g" => {
+                            i += 1;
+                            if i < rest.len() {
+                                grep_pattern = Some(rest[i]);
+                                i += 1;
+                            } else {
+                                println!("usage: :history -g <pattern>");
+                                return Ok(false);
+                            }
+                        }
+                        "-f" => {
+                            i += 1;
+                            if i < rest.len() {
+                                out_file = Some(rest[i]);
+                                i += 1;
+                            } else {
+                                println!("usage: :history -f <file>");
+                                return Ok(false);
+                            }
+                        }
+                        "-u" => {
+                            unique = true;
+                            i += 1;
+                        }
+                        _ => {
+                            range_or_limit = Some(rest[i].to_string());
+                            i += 1;
+                        }
+                    }
+                }
+                let entries = &self.history_entries;
+                let len = entries.len();
+                let (start, end) = if let Some(ref r) = range_or_limit {
+                    parse_history_range(r, len)
+                } else {
+                    (len.saturating_sub(25), len)
+                };
+                let end = end.min(len);
+                let slice = if start < len && start < end {
+                    &entries[start..end]
+                } else {
+                    &entries[0..0]
+                };
+                let mut selected: Vec<(usize, &String)> = slice
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| (start + i + 1, e))
+                    .filter(|(_, e)| grep_pattern.map(|p| e.contains(p)).unwrap_or(true))
+                    .collect();
+                if unique {
+                    let mut seen = HashSet::new();
+                    selected.retain(|(_, e)| seen.insert((*e).clone()));
+                }
+                if let Some(path) = out_file {
+                    let path = Path::new(path);
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(path)
+                    {
+                        use std::io::Write;
+                        for (_, e) in &selected {
+                            let _ = writeln!(f, "{e}");
+                        }
+                        println!(
+                            "\x1b[2m[appended {} entries to {}]\x1b[0m",
+                            selected.len(),
+                            path.display()
+                        );
+                    } else {
+                        println!(
+                            "\x1b[31m[run]\x1b[0m could not open {} for writing",
+                            path.display()
+                        );
+                    }
+                } else {
+                    if selected.is_empty() {
+                        println!("\x1b[2m(no history)\x1b[0m");
+                    } else {
+                        for (num, entry) in selected {
+                            let first_line = entry.lines().next().unwrap_or(entry.as_str());
+                            let is_multiline = entry.contains('\n');
+                            if is_multiline {
+                                println!(
+                                    "\x1b[2m[{num:>4}]\x1b[0m {first_line} \x1b[2m(...)\x1b[0m"
+                                );
+                            } else {
+                                println!("\x1b[2m[{num:>4}]\x1b[0m {entry}");
+                            }
+                        }
+                    }
+                }
                 return Ok(false);
             }
             "install" => {
@@ -1436,7 +2294,9 @@ impl ReplState {
                 }
             }
         };
-        render_outcome(&outcome);
+        render_outcome(&outcome, self.xmode);
+        self.last_stdout = Some(outcome.stdout.clone());
+        self.in_count += 1;
         Ok(())
     }
 
@@ -1466,6 +2326,50 @@ impl ReplState {
                 Ok(outcome)
             }
         }
+    }
+
+    /// Run introspection (:? EXPR). Python: help(expr) in session. Others: not available.
+    fn run_introspect(&mut self, expr: &str) -> Result<()> {
+        let language = self.current_language.clone();
+        let lang = language.canonical_id();
+        if lang == "python" {
+            let code = format!("help({expr})");
+            let outcome = self.eval_in_session(&language, &code)?;
+            render_outcome(&outcome, self.xmode);
+            Ok(())
+        } else {
+            println!(
+                "\x1b[2mIntrospection not available for {lang}. Use :? in a Python session.\x1b[0m"
+            );
+            Ok(())
+        }
+    }
+
+    /// Run :debug [CODE]. Python: pdb on temp file. Others: not available.
+    fn run_debug(&self, code: &str) -> Result<()> {
+        let lang = self.current_language.canonical_id();
+        if lang != "python" {
+            println!(
+                "\x1b[2mDebug not available for {lang}. Use :debug in a Python session (pdb).\x1b[0m"
+            );
+            return Ok(());
+        }
+        let mut tmp = tempfile::NamedTempFile::new().context("create temp file for :debug")?;
+        tmp.as_file_mut()
+            .write_all(code.as_bytes())
+            .context("write debug script")?;
+        let path = tmp.path();
+        let status = Command::new("python3")
+            .args(["-m", "pdb", path.to_str().unwrap_or("")])
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .context("run pdb")?;
+        if !status.success() {
+            println!("\x1b[2m[pdb exit {status}]\x1b[0m");
+        }
+        Ok(())
     }
 
     fn print_languages(&self) {
@@ -1631,6 +2535,16 @@ impl ReplState {
         Ok(())
     }
 
+    fn log_input(&self, line: &str) {
+        if let Some(ref p) = self.log_path {
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(p)
+                .and_then(|mut f| writeln!(f, "{line}"));
+        }
+    }
+
     fn save_session(&self, path: &Path) -> Result<usize> {
         use std::io::Write;
         let mut file = std::fs::File::create(path)
@@ -1642,56 +2556,42 @@ impl ReplState {
         Ok(count)
     }
 
-    fn show_history(&self, limit: usize) {
-        let entries = &self.history_entries;
-        let start = entries.len().saturating_sub(limit);
-        if entries.is_empty() {
-            println!("\x1b[2m(no history)\x1b[0m");
-            return;
+    fn print_help(&self) {
+        println!("\x1b[1mCommands\x1b[0m");
+        for (name, desc) in CMD_HELP {
+            println!("  \x1b[36m:{name}\x1b[0m  \x1b[2m{desc}\x1b[0m");
         }
-        for (i, entry) in entries[start..].iter().enumerate() {
-            let num = start + i + 1;
-            // Show multi-line entries with continuation indicator
-            let first_line = entry.lines().next().unwrap_or(entry);
-            let is_multiline = entry.contains('\n');
-            if is_multiline {
-                println!("\x1b[2m[{num:>4}]\x1b[0m {first_line} \x1b[2m(...)\x1b[0m");
-            } else {
-                println!("\x1b[2m[{num:>4}]\x1b[0m {entry}");
+        println!("\x1b[2mLanguage shortcuts: :py, :js, :rs, :go, :cpp, :java, ...\x1b[0m");
+        println!(
+            "\x1b[2mIn session languages (e.g. Python), _ is the last expression result.\x1b[0m"
+        );
+    }
+
+    fn print_cmd_help(cmd_name: &str) {
+        let key = cmd_name.trim_start_matches(':').trim().to_lowercase();
+        for (name, desc) in CMD_HELP {
+            if name.to_lowercase() == key {
+                println!("  \x1b[36m:{name}\x1b[0m  \x1b[2m{desc}\x1b[0m");
+                return;
             }
+        }
+        println!("\x1b[31m[run]\x1b[0m unknown command :{cmd_name}");
+    }
+
+    fn print_commands_machine() {
+        for (name, desc) in CMD_HELP {
+            println!(":{name}\t{desc}");
         }
     }
 
-    fn print_help(&self) {
-        println!("\x1b[1mCommands\x1b[0m");
-        println!("  \x1b[36m:help\x1b[0m                 \x1b[2mShow this help\x1b[0m");
-        println!("  \x1b[36m:lang\x1b[0m <id>            \x1b[2mSwitch language\x1b[0m");
-        println!("  \x1b[36m:languages\x1b[0m            \x1b[2mList available languages\x1b[0m");
-        println!("  \x1b[36m:versions\x1b[0m [id]       \x1b[2mShow toolchain versions\x1b[0m");
+    fn print_quickref() {
+        println!("\x1b[1mQuick reference\x1b[0m");
+        for (name, desc) in CMD_HELP {
+            println!("  :{name}\t{desc}");
+        }
         println!(
-            "  \x1b[36m:detect\x1b[0m on|off        \x1b[2mToggle auto language detection\x1b[0m"
+            "\x1b[2m:py :js :rs :go :cpp :java ...  In Python (session), _ = last result.\x1b[0m"
         );
-        println!(
-            "  \x1b[36m:reset\x1b[0m                \x1b[2mClear current session state\x1b[0m"
-        );
-        println!("  \x1b[36m:load\x1b[0m <path>          \x1b[2mLoad and execute a file\x1b[0m");
-        println!(
-            "  \x1b[36m:save\x1b[0m <path>          \x1b[2mSave session history to file\x1b[0m"
-        );
-        println!(
-            "  \x1b[36m:history\x1b[0m [n]          \x1b[2mShow last n entries (default: 25)\x1b[0m"
-        );
-        println!(
-            "  \x1b[36m:install\x1b[0m <pkg>        \x1b[2mInstall a package for current language\x1b[0m"
-        );
-        println!(
-            "  \x1b[36m:bench\x1b[0m [N] <code>     \x1b[2mBenchmark code N times (default: 10)\x1b[0m"
-        );
-        println!(
-            "  \x1b[36m:type\x1b[0m                 \x1b[2mShow current language and session status\x1b[0m"
-        );
-        println!("  \x1b[36m:exit\x1b[0m                 \x1b[2mLeave the REPL\x1b[0m");
-        println!("\x1b[2mLanguage shortcuts: :py, :js, :rs, :go, :cpp, :java, ...\x1b[0m");
     }
 
     fn shutdown(&mut self) {
@@ -1701,14 +2601,65 @@ impl ReplState {
     }
 }
 
-fn render_outcome(outcome: &ExecutionOutcome) {
+/// Strip REPL prompts (>>> and ...) from pasted lines and dedent.
+fn strip_paste_prompts(lines: &[String]) -> String {
+    let stripped: Vec<String> = lines
+        .iter()
+        .map(|s| {
+            let t = s.trim_start();
+            let t = t.strip_prefix(">>>").map(|r| r.trim_start()).unwrap_or(t);
+            let t = t.strip_prefix("...").map(|r| r.trim_start()).unwrap_or(t);
+            t.to_string()
+        })
+        .collect();
+    let non_empty: Vec<&str> = stripped
+        .iter()
+        .map(String::as_str)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if non_empty.is_empty() {
+        return stripped.join("\n");
+    }
+    let min_indent = non_empty
+        .iter()
+        .map(|s| s.len() - s.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    let out: Vec<String> = stripped
+        .iter()
+        .map(|s| {
+            if s.is_empty() {
+                s.clone()
+            } else {
+                let n = (s.len() - s.trim_start().len()).min(min_indent);
+                s[n..].to_string()
+            }
+        })
+        .collect();
+    out.join("\n")
+}
+
+fn apply_xmode(stderr: &str, xmode: XMode) -> String {
+    let lines: Vec<&str> = stderr.lines().collect();
+    match xmode {
+        XMode::Plain => lines.first().map(|s| (*s).to_string()).unwrap_or_default(),
+        XMode::Context => lines.iter().take(5).cloned().collect::<Vec<_>>().join("\n"),
+        XMode::Verbose => stderr.to_string(),
+    }
+}
+
+/// Render execution outcome. Stdout is passed through unchanged so engine ANSI/rich output is preserved.
+fn render_outcome(outcome: &ExecutionOutcome, xmode: XMode) {
     if !outcome.stdout.is_empty() {
         print!("{}", ensure_trailing_newline(&outcome.stdout));
     }
     if !outcome.stderr.is_empty() {
         let formatted =
             output::format_stderr(&outcome.language, &outcome.stderr, outcome.success());
-        eprint!("\x1b[31m{}\x1b[0m", ensure_trailing_newline(&formatted));
+        let trimmed = apply_xmode(&formatted, xmode);
+        if !trimmed.is_empty() {
+            eprint!("\x1b[31m{}\x1b[0m", ensure_trailing_newline(&trimmed));
+        }
     }
 
     let millis = outcome.duration.as_millis();
@@ -1748,11 +2699,260 @@ fn ensure_trailing_newline(text: &str) -> String {
     }
 }
 
+/// Run $EDITOR (or vi/notepad) on the given path. Blocks until editor exits.
+fn run_editor(path: &Path) -> Result<()> {
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| {
+        #[cfg(unix)]
+        let default = "vi";
+        #[cfg(windows)]
+        let default = "notepad";
+        default.to_string()
+    });
+    let path_str = path.to_string_lossy();
+    let status = Command::new(&editor)
+        .arg(path_str.as_ref())
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .context("run editor")?;
+    if !status.success() {
+        bail!("editor exited with {}", status);
+    }
+    Ok(())
+}
+
+/// Create a temp file, run the editor on it, return the path (temp file is kept).
+fn edit_temp_file() -> Result<PathBuf> {
+    let tmp = tempfile::NamedTempFile::new().context("create temp file for :edit")?;
+    let path = tmp.path().to_path_buf();
+    run_editor(&path)?;
+    std::mem::forget(tmp);
+    Ok(path)
+}
+
+/// Fetch URL to a temp file and return its path. Caller runs and then temp file is left in /tmp.
+fn fetch_url_to_temp(url: &str) -> Result<PathBuf> {
+    let tmp = tempfile::NamedTempFile::new().context("create temp file for :load url")?;
+    let path = tmp.path().to_path_buf();
+
+    #[cfg(unix)]
+    let ok = Command::new("curl")
+        .args(["-sSL", "-o", path.to_str().unwrap_or(""), url])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    #[cfg(windows)]
+    let ok = Command::new("curl")
+        .args(["-sSL", "-o", path.to_str().unwrap_or(""), url])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or_else(|_| {
+            // Fallback: PowerShell
+            let ps = format!(
+                "Invoke-WebRequest -Uri '{}' -OutFile '{}' -UseBasicParsing",
+                url.replace('\'', "''"),
+                path.to_string_lossy().replace('\'', "''")
+            );
+            Command::new("powershell")
+                .args(["-NoProfile", "-Command", &ps])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        });
+
+    if !ok {
+        let _ = tmp.close();
+        bail!("fetch failed (curl or download failed)");
+    }
+    std::mem::forget(tmp);
+    Ok(path)
+}
+
+/// Run a shell command. If `capture` is true, run and print stdout/stderr; otherwise inherit.
+fn run_shell(cmd: &str, capture: bool) {
+    #[cfg(unix)]
+    let mut c = Command::new("sh");
+    #[cfg(unix)]
+    c.arg("-c").arg(cmd);
+
+    #[cfg(windows)]
+    let mut c = {
+        let shell = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+        let mut com = Command::new(shell);
+        com.arg("/c").arg(cmd);
+        com
+    };
+
+    if capture {
+        match c
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+        {
+            Ok(out) => {
+                let _ = std::io::stdout().write_all(&out.stdout);
+                let _ = std::io::stderr().write_all(&out.stderr);
+                if let Some(code) = out.status.code() {
+                    if code != 0 {
+                        println!("\x1b[2m[exit {code}]\x1b[0m");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("\x1b[31m[run]\x1b[0m shell: {e}");
+            }
+        }
+    } else {
+        c.stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit());
+        if let Err(e) = c.status() {
+            eprintln!("\x1b[31m[run]\x1b[0m shell: {e}");
+        }
+    }
+}
+
+/// Parse :history range: "4-6", "4-", "-6", or "10" (last n). 1-based; returns (start, end) 0-based for entries[start..end].
+fn parse_history_range(s: &str, len: usize) -> (usize, usize) {
+    if s.contains('-') {
+        let (a, b) = s.split_once('-').unwrap_or((s, ""));
+        let a = a.trim();
+        let b = b.trim();
+        if a.is_empty() && b.is_empty() {
+            return (len.saturating_sub(25), len);
+        }
+        if b.is_empty() {
+            // "4-" = from 4 to end
+            if let Ok(n) = a.parse::<usize>() {
+                let start = n.saturating_sub(1).min(len);
+                return (start, len);
+            }
+        } else if a.is_empty() {
+            // "-6" = last 6
+            if let Ok(n) = b.parse::<usize>() {
+                let start = len.saturating_sub(n);
+                return (start, len);
+            }
+        } else if let (Ok(lo), Ok(hi)) = (a.parse::<usize>(), b.parse::<usize>()) {
+            // "4-6" = 4 to 6 inclusive
+            let start = lo.saturating_sub(1).min(len);
+            let end = hi.min(len).max(start);
+            return (start, end);
+        }
+    } else if let Ok(n) = s.parse::<usize>() {
+        // "10" = last 10
+        let start = len.saturating_sub(n);
+        return (start, len);
+    }
+    (len.saturating_sub(25), len)
+}
+
 fn history_path() -> Option<PathBuf> {
     if let Ok(home) = std::env::var("HOME") {
         return Some(Path::new(&home).join(HISTORY_FILE));
     }
+    #[cfg(windows)]
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        return Some(Path::new(&home).join(HISTORY_FILE));
+    }
     None
+}
+
+fn bookmarks_path() -> Option<PathBuf> {
+    if let Ok(home) = std::env::var("HOME") {
+        return Some(Path::new(&home).join(BOOKMARKS_FILE));
+    }
+    #[cfg(windows)]
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        return Some(Path::new(&home).join(BOOKMARKS_FILE));
+    }
+    None
+}
+
+fn load_bookmarks() -> Result<HashMap<String, PathBuf>> {
+    let path = bookmarks_path().context("no home dir for bookmarks")?;
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Ok(HashMap::new()),
+    };
+    let mut out = HashMap::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((name, rest)) = line.split_once('\t') {
+            let name = name.trim().to_string();
+            let p = PathBuf::from(rest.trim());
+            if !name.is_empty() && p.is_absolute() {
+                out.insert(name, p);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn save_bookmarks(bookmarks: &HashMap<String, PathBuf>) -> Result<()> {
+    let path = bookmarks_path().context("no home dir for bookmarks")?;
+    let mut lines: Vec<String> = bookmarks
+        .iter()
+        .map(|(k, v)| format!("{}\t{}", k, v.display()))
+        .collect();
+    lines.sort();
+    std::fs::write(path, lines.join("\n") + "\n")?;
+    Ok(())
+}
+
+fn repl_config_path() -> Option<PathBuf> {
+    #[cfg(unix)]
+    if let Ok(home) = std::env::var("HOME") {
+        return Some(PathBuf::from(&home).join(REPL_CONFIG_FILE));
+    }
+    #[cfg(windows)]
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        return Some(PathBuf::from(&home).join(REPL_CONFIG_FILE));
+    }
+    None
+}
+
+fn load_repl_config() -> Result<HashMap<String, String>> {
+    let path = repl_config_path().context("no home dir for REPL config")?;
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Ok(HashMap::new()),
+    };
+    let mut out = HashMap::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once('=') {
+            let k = k.trim().to_lowercase();
+            let v = v.trim().trim_matches('"').to_string();
+            if !k.is_empty() {
+                out.insert(k, v);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn save_repl_config(cfg: &HashMap<String, String>) -> Result<()> {
+    let path = repl_config_path().context("no home dir for REPL config")?;
+    let mut keys: Vec<_> = cfg.keys().collect();
+    keys.sort();
+    let lines: Vec<String> = keys
+        .iter()
+        .map(|k| {
+            let v = cfg.get(*k).unwrap();
+            format!("{}={}", k, v)
+        })
+        .collect();
+    std::fs::write(path, lines.join("\n") + "\n")?;
+    Ok(())
 }
 
 /// Extract variable/function/class names defined in a code snippet for tab completion.

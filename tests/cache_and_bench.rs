@@ -47,7 +47,7 @@ fn hash_source_empty_string() {
 fn cache_lookup_returns_none_for_unknown() {
     let hash = run::engine::hash_source("this_is_a_very_unique_test_string_12345");
     assert!(
-        run::engine::cache_lookup(hash).is_none(),
+        run::engine::cache_lookup("test-cache", hash).is_none(),
         "cache should return None for unknown hashes"
     );
 }
@@ -60,10 +60,10 @@ fn cache_store_and_retrieve() {
 
     let hash = run::engine::hash_source("cache_store_and_retrieve_test");
 
-    let cached = run::engine::cache_store(hash, &path);
+    let cached = run::engine::cache_store("test-cache", hash, &path);
     assert!(cached.is_some(), "cache_store should succeed");
 
-    let lookup = run::engine::cache_lookup(hash);
+    let lookup = run::engine::cache_lookup("test-cache", hash);
     assert!(lookup.is_some(), "cache_lookup should find stored entry");
     assert!(lookup.unwrap().exists(), "cached path should exist on disk");
 }

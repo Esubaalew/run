@@ -9,7 +9,8 @@ use tempfile::{Builder, TempDir};
 
 use super::{
     ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store,
-    execution_timeout, hash_source, run_version_command, try_cached_execution, wait_with_timeout,
+    execution_timeout, hash_source, perf_record, run_version_command, try_cached_execution,
+    wait_with_timeout,
 };
 
 pub struct GoEngine {
@@ -129,6 +130,75 @@ impl LanguageEngine for GoEngine {
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Try cache for inline/stdin payloads
         let args = payload.args();
+        if let ExecutionPayload::File { path, .. } = payload {
+            let start = Instant::now();
+            let source_text = fs::read_to_string(path).unwrap_or_default();
+            let src_hash = hash_source(&source_text);
+            if let Some(output) = try_cached_execution("go-file", src_hash) {
+                perf_record("go", "file.cache_hit");
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: output.status.code(),
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+            perf_record("go", "file.cache_miss");
+
+            let binary = self.ensure_executable()?;
+            let temp_dir = Builder::new()
+                .prefix("run-go-file")
+                .tempdir()
+                .context("failed to create temporary directory for go file build")?;
+            let bin_path = temp_dir.path().join("run_go_file_binary");
+            let mut build_cmd = Command::new(binary);
+            perf_record("go", "file.build");
+            build_cmd
+                .arg("build")
+                .arg("-o")
+                .arg(&bin_path)
+                .arg(path)
+                .env("GO111MODULE", "off")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            let build_output = build_cmd.output().with_context(|| {
+                format!("failed to invoke {} to build Go source", binary.display())
+            })?;
+            if !build_output.status.success() {
+                perf_record("go", "file.build_fail");
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: build_output.status.code(),
+                    stdout: String::from_utf8_lossy(&build_output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&build_output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+
+            let cached_bin =
+                cache_store("go-file", src_hash, &bin_path).unwrap_or(bin_path.clone());
+            let mut run_cmd = Command::new(&cached_bin);
+            run_cmd
+                .args(args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .stdin(Stdio::inherit());
+            let child = run_cmd.spawn().with_context(|| {
+                format!(
+                    "failed to execute compiled Go binary {}",
+                    cached_bin.display()
+                )
+            })?;
+            let output = wait_with_timeout(child, execution_timeout())?;
+            return Ok(ExecutionOutcome {
+                language: self.id().to_string(),
+                exit_code: output.status.code(),
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                duration: start.elapsed(),
+            });
+        }
 
         if let Some(code) = match payload {
             ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
@@ -137,7 +207,8 @@ impl LanguageEngine for GoEngine {
             _ => None,
         } {
             let src_hash = hash_source(code);
-            if let Some(output) = try_cached_execution(src_hash) {
+            if let Some(output) = try_cached_execution("go", src_hash) {
+                perf_record("go", "inline.cache_hit");
                 let start = Instant::now();
                 return Ok(ExecutionOutcome {
                     language: self.id().to_string(),
@@ -147,6 +218,7 @@ impl LanguageEngine for GoEngine {
                     duration: start.elapsed(),
                 });
             }
+            perf_record("go", "inline.cache_miss");
         }
 
         let binary = self.ensure_executable()?;
@@ -198,7 +270,7 @@ impl LanguageEngine for GoEngine {
                 });
             }
 
-            cache_store(h, &bin_path);
+            cache_store("go", h, &bin_path);
 
             let mut run_cmd = Command::new(&bin_path);
             run_cmd

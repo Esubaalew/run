@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.7.0] - 2026-02-10
+
+### Added
+
+- Performance telemetry counters with persistent reporting and reset commands (`--perf-report`, `--perf-reset`).
+- Adaptive compiler daemon policy for smoother first-use behavior while preserving daemon acceleration.
+- Benchmark harness integration for telemetry reset/report output (`bench/bench.sh`).
+
+### Changed
+
+- File-mode execution for C/C++/Rust now prefers hot workspace binaries before global cache fallback to reduce run-2 spikes.
+- Technical paper updated with final architecture and measured optimization results.
+
 ## [0.6.1] - 2026-02-09
 
 ### Fixed
@@ -156,7 +169,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/esubaalew/run/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/esubaalew/run/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/esubaalew/run/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/esubaalew/run/compare/v0.5.0...v0.5.1

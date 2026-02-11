@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use crate::cli::{Command, ExecutionSpec};
 use crate::engine::{
     ExecutionPayload, LanguageRegistry, build_install_command, default_language,
-    detect_language_for_source, ensure_known_language,
+    detect_language_for_source, ensure_known_language, perf_reset, perf_snapshot,
 };
 use crate::language::LanguageSpec;
 use crate::output;
@@ -38,6 +38,27 @@ pub fn run(command: Command) -> Result<i32> {
         }
         Command::Bench { spec, iterations } => bench_run(spec, &registry, iterations),
         Command::Watch { spec } => watch_run(spec, &registry),
+        Command::PerfReport => {
+            print_perf_report();
+            Ok(0)
+        }
+        Command::PerfReset => {
+            perf_reset();
+            eprintln!("\x1b[2m[perf] counters reset\x1b[0m");
+            Ok(0)
+        }
+    }
+}
+
+fn print_perf_report() {
+    let rows = perf_snapshot();
+    if rows.is_empty() {
+        println!("perf_counter,count");
+        return;
+    }
+    println!("perf_counter,count");
+    for (key, value) in rows {
+        println!("{key},{value}");
     }
 }
 
@@ -192,6 +213,13 @@ fn execute_once(spec: ExecutionSpec, registry: &LanguageRegistry) -> Result<i32>
             engine.display_name(),
             outcome.duration.as_millis()
         );
+    }
+
+    if std::env::var("RUN_PERF_REPORT").is_ok_and(|v| v == "1" || v == "true") {
+        eprintln!("\x1b[2m[perf]\x1b[0m");
+        for (key, value) in perf_snapshot() {
+            eprintln!("\x1b[2m  {key}={value}\x1b[0m");
+        }
     }
 
     Ok(outcome

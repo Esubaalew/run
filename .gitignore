@@ -32,6 +32,25 @@ registry-server/target/
 # Local sandbox
 .run-lab/
 
+# Internal roadmap (do not ship)
+do.md
+
+run_technical_paper.docx
+run_technical_paper.txt
+run_technical_paper_ieee.md
+
+# LaTeX intermediate artifacts (paper/)
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
+
 # Exclude incomplete/redundant directories
 /runtime/
 /examples/swap-demo/
+
+# Ah let me ignore the paper/ directory for now
+paper/

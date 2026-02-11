@@ -8,8 +8,8 @@ use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
 use super::{
-    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store, hash_source,
-    run_version_command, try_cached_execution,
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_lookup, cache_store,
+    compiler_command, hash_source, perf_record, run_version_command, try_cached_execution,
 };
 
 pub struct CEngine {
@@ -63,12 +63,11 @@ impl CEngine {
 
     fn compile(&self, source: &Path, output: &Path) -> Result<std::process::Output> {
         let compiler = self.ensure_compiler()?;
-        let mut cmd = Command::new(compiler);
+        let mut cmd = compiler_command(compiler);
         cmd.arg(source)
             .arg("-std=c11")
             .arg("-O0")
-            .arg("-Wall")
-            .arg("-Wextra")
+            .arg("-w")
             .arg("-o")
             .arg(output)
             .stdout(Stdio::piped())
@@ -101,6 +100,130 @@ impl CEngine {
             }
         }
         path
+    }
+
+    fn execute_file_incremental(&self, source: &Path, args: &[String]) -> Result<ExecutionOutcome> {
+        let start = Instant::now();
+        let source_text = fs::read_to_string(source).unwrap_or_default();
+        let source_hash = hash_source(&source_text);
+
+        let compiler = self.ensure_compiler()?;
+        let source_key = source
+            .canonicalize()
+            .unwrap_or_else(|_| source.to_path_buf());
+        let workspace = std::env::temp_dir().join(format!(
+            "run-c-inc-{:016x}",
+            hash_source(&source_key.to_string_lossy())
+        ));
+        fs::create_dir_all(&workspace).with_context(|| {
+            format!(
+                "failed to create C incremental workspace {}",
+                workspace.display()
+            )
+        })?;
+        let obj = workspace.join("main.o");
+        let dep = workspace.join("main.d");
+        let bin = workspace.join("run_c_incremental_binary");
+
+        let needs_compile = c_needs_recompile(source, &obj, &dep);
+        if !needs_compile && bin.exists() {
+            perf_record("c", "file.workspace_hit");
+            cache_store("c-file", source_hash, &bin);
+            let run_output = self.run_binary(&bin, args)?;
+            return Ok(ExecutionOutcome {
+                language: self.id().to_string(),
+                exit_code: run_output.status.code(),
+                stdout: String::from_utf8_lossy(&run_output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&run_output.stderr).into_owned(),
+                duration: start.elapsed(),
+            });
+        }
+
+        if let Some(cached_bin) = cache_lookup("c-file", source_hash) {
+            perf_record("c", "file.cache_hit");
+            let _ = fs::copy(&cached_bin, &bin);
+            let run_output = self.run_binary(&bin, args)?;
+            return Ok(ExecutionOutcome {
+                language: self.id().to_string(),
+                exit_code: run_output.status.code(),
+                stdout: String::from_utf8_lossy(&run_output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&run_output.stderr).into_owned(),
+                duration: start.elapsed(),
+            });
+        }
+        perf_record("c", "file.cache_miss");
+
+        if needs_compile {
+            perf_record("c", "file.compile");
+            let mut compile = compiler_command(compiler);
+            compile
+                .arg(source)
+                .arg("-std=c11")
+                .arg("-O0")
+                .arg("-w")
+                .arg("-c")
+                .arg("-MMD")
+                .arg("-MF")
+                .arg(&dep)
+                .arg("-o")
+                .arg(&obj)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            let compile_out = compile.output().with_context(|| {
+                format!(
+                    "failed to invoke {} for incremental C compile",
+                    compiler.display()
+                )
+            })?;
+            if !compile_out.status.success() {
+                perf_record("c", "file.compile_fail");
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: compile_out.status.code(),
+                    stdout: String::from_utf8_lossy(&compile_out.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&compile_out.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+
+            let mut link = compiler_command(compiler);
+            perf_record("c", "file.link");
+            link.arg(&obj)
+                .arg("-o")
+                .arg(&bin)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            let link_out = link.output().with_context(|| {
+                format!(
+                    "failed to invoke {} for incremental C link",
+                    compiler.display()
+                )
+            })?;
+            if !link_out.status.success() {
+                perf_record("c", "file.link_fail");
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: link_out.status.code(),
+                    stdout: String::from_utf8_lossy(&link_out.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&link_out.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+            cache_store("c-file", source_hash, &bin);
+        } else {
+            // Rehydrate persistent cache even when incremental workspace is already up-to-date.
+            perf_record("c", "file.rehydrate_cache");
+            cache_store("c-file", source_hash, &bin);
+        }
+
+        let run_output = self.run_binary(&bin, args)?;
+        Ok(ExecutionOutcome {
+            language: self.id().to_string(),
+            exit_code: run_output.status.code(),
+            stdout: String::from_utf8_lossy(&run_output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&run_output.stderr).into_owned(),
+            duration: start.elapsed(),
+        })
     }
 }
 
@@ -145,6 +268,9 @@ impl LanguageEngine for CEngine {
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Try cache for inline/stdin payloads
         let args = payload.args();
+        if let ExecutionPayload::File { path, .. } = payload {
+            return self.execute_file_incremental(path, args);
+        }
 
         if let Some(code) = match payload {
             ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
@@ -154,7 +280,8 @@ impl LanguageEngine for CEngine {
         } {
             let prepared = prepare_inline_source(code);
             let src_hash = hash_source(&prepared);
-            if let Some(output) = try_cached_execution(src_hash) {
+            if let Some(output) = try_cached_execution("c", src_hash) {
+                perf_record("c", "inline.cache_hit");
                 let start = Instant::now();
                 return Ok(ExecutionOutcome {
                     language: self.id().to_string(),
@@ -164,6 +291,7 @@ impl LanguageEngine for CEngine {
                     duration: start.elapsed(),
                 });
             }
+            perf_record("c", "inline.cache_miss");
         }
 
         let temp_dir = Builder::new()
@@ -196,7 +324,7 @@ impl LanguageEngine for CEngine {
         }
 
         if let Some(h) = cache_key {
-            cache_store(h, &binary_path);
+            cache_store("c", h, &binary_path);
         }
 
         let run_output = self.run_binary(&binary_path, args)?;
@@ -348,12 +476,11 @@ impl CSession {
     }
 
     fn compile_with_paths(&self, source: &Path, binary: &Path) -> Result<std::process::Output> {
-        let mut cmd = Command::new(&self.compiler);
+        let mut cmd = compiler_command(&self.compiler);
         cmd.arg(source)
             .arg("-std=c11")
             .arg("-O0")
-            .arg("-Wall")
-            .arg("-Wextra")
+            .arg("-w")
             .arg("-o")
             .arg(binary)
             .stdout(Stdio::piped())
@@ -1030,4 +1157,41 @@ fn resolve_c_compiler() -> Option<PathBuf> {
     ["cc", "clang", "gcc"]
         .into_iter()
         .find_map(|candidate| which::which(candidate).ok())
+}
+
+fn c_needs_recompile(source: &Path, object: &Path, depfile: &Path) -> bool {
+    if !object.exists() {
+        return true;
+    }
+    let obj_time = match object.metadata().and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(_) => return true,
+    };
+    let src_time = match source.metadata().and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(_) => return true,
+    };
+    if src_time > obj_time {
+        return true;
+    }
+    if !depfile.exists() {
+        return true;
+    }
+    let dep_text = match fs::read_to_string(depfile) {
+        Ok(t) => t.replace("\\\n", " "),
+        Err(_) => return true,
+    };
+    for token in dep_text.split_whitespace().skip(1) {
+        let path = token.trim_end_matches(':');
+        if path.is_empty() {
+            continue;
+        }
+        let p = Path::new(path);
+        if let Ok(t) = p.metadata().and_then(|m| m.modified())
+            && t > obj_time
+        {
+            return true;
+        }
+    }
+    false
 }

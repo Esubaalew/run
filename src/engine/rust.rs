@@ -7,8 +7,9 @@ use anyhow::{Context, Result};
 use tempfile::{Builder, TempDir};
 
 use super::{
-    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_store,
-    execution_timeout, hash_source, run_version_command, try_cached_execution, wait_with_timeout,
+    ExecutionOutcome, ExecutionPayload, LanguageEngine, LanguageSession, cache_lookup, cache_store,
+    compiler_command, execution_timeout, hash_source, perf_record, run_version_command,
+    try_cached_execution, wait_with_timeout,
 };
 
 pub struct RustEngine {
@@ -38,9 +39,16 @@ impl RustEngine {
 
     fn compile(&self, source: &Path, output: &Path) -> Result<std::process::Output> {
         let compiler = self.ensure_compiler()?;
-        let mut cmd = Command::new(compiler);
+        let mut cmd = compiler_command(compiler);
         cmd.arg("--color=never")
             .arg("--edition=2021")
+            // Favor faster compile turnaround for REPL/runner scenarios.
+            .arg("-C")
+            .arg("debuginfo=0")
+            .arg("-C")
+            .arg("opt-level=0")
+            .arg("-C")
+            .arg("codegen-units=16")
             .arg("--crate-name")
             .arg("run_snippet")
             .arg(source)
@@ -48,6 +56,117 @@ impl RustEngine {
             .arg(output);
         cmd.output()
             .with_context(|| format!("failed to invoke rustc at {}", compiler.display()))
+    }
+
+    fn execute_file_incremental(&self, source: &Path, args: &[String]) -> Result<ExecutionOutcome> {
+        let start = Instant::now();
+        let source_text = fs::read_to_string(source).unwrap_or_default();
+        let source_hash = hash_source(&source_text);
+
+        let compiler = self.ensure_compiler()?;
+        let source_key = source
+            .canonicalize()
+            .unwrap_or_else(|_| source.to_path_buf());
+        let workspace = std::env::temp_dir().join(format!(
+            "run-rust-inc-{:016x}",
+            hash_source(&source_key.to_string_lossy())
+        ));
+        fs::create_dir_all(&workspace).with_context(|| {
+            format!(
+                "failed to create Rust incremental workspace {}",
+                workspace.display()
+            )
+        })?;
+        let binary_path = workspace.join("run_rust_inc_binary");
+        let incremental_dir = workspace.join("incremental");
+        let _ = fs::create_dir_all(&incremental_dir);
+
+        let needs_compile = if !binary_path.exists() {
+            true
+        } else {
+            let src = source.metadata().and_then(|m| m.modified()).ok();
+            let bin = binary_path.metadata().and_then(|m| m.modified()).ok();
+            match (src, bin) {
+                (Some(s), Some(b)) => s > b,
+                _ => true,
+            }
+        };
+
+        if !needs_compile && binary_path.exists() {
+            perf_record("rust", "file.workspace_hit");
+            cache_store("rust-file", source_hash, &binary_path);
+            let runtime_output = self.run_binary(&binary_path, args)?;
+            return Ok(ExecutionOutcome {
+                language: self.id().to_string(),
+                exit_code: runtime_output.status.code(),
+                stdout: String::from_utf8_lossy(&runtime_output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&runtime_output.stderr).into_owned(),
+                duration: start.elapsed(),
+            });
+        }
+
+        if let Some(cached_bin) = cache_lookup("rust-file", source_hash) {
+            perf_record("rust", "file.cache_hit");
+            let _ = fs::copy(&cached_bin, &binary_path);
+            let runtime_output = self.run_binary(&binary_path, args)?;
+            return Ok(ExecutionOutcome {
+                language: self.id().to_string(),
+                exit_code: runtime_output.status.code(),
+                stdout: String::from_utf8_lossy(&runtime_output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&runtime_output.stderr).into_owned(),
+                duration: start.elapsed(),
+            });
+        }
+        perf_record("rust", "file.cache_miss");
+
+        if needs_compile {
+            perf_record("rust", "file.compile");
+            let mut cmd = compiler_command(compiler);
+            cmd.arg("--color=never")
+                .arg("--edition=2021")
+                .arg("-C")
+                .arg("debuginfo=0")
+                .arg("-C")
+                .arg("opt-level=0")
+                .arg("-C")
+                .arg("codegen-units=16")
+                .arg("-C")
+                .arg(format!("incremental={}", incremental_dir.display()))
+                .arg("--crate-name")
+                .arg("run_snippet")
+                .arg(source)
+                .arg("-o")
+                .arg(&binary_path)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            let compile_output = cmd
+                .output()
+                .with_context(|| format!("failed to invoke rustc at {}", compiler.display()))?;
+            if !compile_output.status.success() {
+                perf_record("rust", "file.compile_fail");
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: compile_output.status.code(),
+                    stdout: String::from_utf8_lossy(&compile_output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&compile_output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+            cache_store("rust-file", source_hash, &binary_path);
+        } else {
+            // Rehydrate persistent cache even when incremental workspace is already up-to-date.
+            perf_record("rust", "file.rehydrate_cache");
+            cache_store("rust-file", source_hash, &binary_path);
+        }
+
+        let runtime_output = self.run_binary(&binary_path, args)?;
+        Ok(ExecutionOutcome {
+            language: self.id().to_string(),
+            exit_code: runtime_output.status.code(),
+            stdout: String::from_utf8_lossy(&runtime_output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&runtime_output.stderr).into_owned(),
+            duration: start.elapsed(),
+        })
     }
 
     fn run_binary(&self, binary: &Path, args: &[String]) -> Result<std::process::Output> {
@@ -129,6 +248,9 @@ impl LanguageEngine for RustEngine {
     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
         // Try cache for inline/stdin payloads
         let args = payload.args();
+        if let ExecutionPayload::File { path, .. } = payload {
+            return self.execute_file_incremental(path, args);
+        }
 
         if let Some(code) = match payload {
             ExecutionPayload::Inline { code, .. } | ExecutionPayload::Stdin { code, .. } => {
@@ -137,7 +259,8 @@ impl LanguageEngine for RustEngine {
             _ => None,
         } {
             let src_hash = hash_source(code);
-            if let Some(output) = try_cached_execution(src_hash) {
+            if let Some(output) = try_cached_execution("rust", src_hash) {
+                perf_record("rust", "inline.cache_hit");
                 let start = Instant::now();
                 return Ok(ExecutionOutcome {
                     language: self.id().to_string(),
@@ -147,6 +270,7 @@ impl LanguageEngine for RustEngine {
                     duration: start.elapsed(),
                 });
             }
+            perf_record("rust", "inline.cache_miss");
         }
 
         let temp_dir = Builder::new()
@@ -185,7 +309,7 @@ impl LanguageEngine for RustEngine {
 
         // Store in cache before running
         if let Some(h) = cache_key {
-            cache_store(h, &binary_path);
+            cache_store("rust", h, &binary_path);
         }
 
         let runtime_output = self.run_binary(&binary_path, args)?;
@@ -297,9 +421,15 @@ fn __print<T: Debug>(value: T) {
     }
 
     fn compile(&self, source: &Path, output: &Path) -> Result<std::process::Output> {
-        let mut cmd = Command::new(&self.compiler);
+        let mut cmd = compiler_command(&self.compiler);
         cmd.arg("--color=never")
             .arg("--edition=2021")
+            .arg("-C")
+            .arg("debuginfo=0")
+            .arg("-C")
+            .arg("opt-level=0")
+            .arg("-C")
+            .arg("codegen-units=16")
             .arg("--crate-name")
             .arg("run_snippet")
             .arg(source)
