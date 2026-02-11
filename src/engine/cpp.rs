@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -1108,6 +1109,10 @@ fn run_cpp_binary(binary: &Path) -> Result<std::process::Output> {
 }
 
 fn ensure_global_cpp_pch(compiler: &Path) -> Option<PathBuf> {
+    static PCH_BUILD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let lock = PCH_BUILD_LOCK.get_or_init(|| Mutex::new(()));
+    let _guard = lock.lock().ok()?;
+
     let cache_dir = std::env::temp_dir().join("run-compile-cache");
     std::fs::create_dir_all(&cache_dir).ok()?;
     let header = cache_dir.join("run_cpp_pch.hpp");
@@ -1122,7 +1127,9 @@ fn ensure_global_cpp_pch(compiler: &Path) -> Option<PathBuf> {
             "#include <algorithm>\n",
             "#include <utility>\n"
         );
-        std::fs::write(&header, contents).ok()?;
+        let tmp_header = cache_dir.join(format!("run_cpp_pch.hpp.tmp.{}", std::process::id()));
+        std::fs::write(&tmp_header, contents).ok()?;
+        std::fs::rename(&tmp_header, &header).ok()?;
     }
     let needs_build = if !gch.exists() {
         true
@@ -1132,6 +1139,7 @@ fn ensure_global_cpp_pch(compiler: &Path) -> Option<PathBuf> {
         h > g
     };
     if needs_build {
+        let tmp_gch = cache_dir.join(format!("run_cpp_pch.hpp.gch.tmp.{}", std::process::id()));
         let mut pch_cmd = compiler_command(compiler);
         let out = pch_cmd
             .arg("-std=c++17")
@@ -1139,14 +1147,16 @@ fn ensure_global_cpp_pch(compiler: &Path) -> Option<PathBuf> {
             .arg("c++-header")
             .arg(&header)
             .arg("-o")
-            .arg(&gch)
+            .arg(&tmp_gch)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
             .ok()?;
         if !out.status.success() {
+            let _ = std::fs::remove_file(&tmp_gch);
             return None;
         }
+        std::fs::rename(&tmp_gch, &gch).ok()?;
     }
     Some(header)
 }

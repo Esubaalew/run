@@ -87,7 +87,6 @@ pub fn hash_source(source: &str) -> u64 {
     hash
 }
 
-
 fn cache_id(namespace: &str, source_hash: u64) -> String {
     format!("{namespace}-{:016x}", source_hash)
 }
@@ -297,7 +296,6 @@ pub fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<std::pro
     loop {
         match child.try_wait() {
             Ok(Some(_status)) => {
-                
                 return child.wait_with_output().map_err(Into::into);
             }
             Ok(None) => {
