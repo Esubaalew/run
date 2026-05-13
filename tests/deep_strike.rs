@@ -74,7 +74,10 @@ fn json_output_wraps_execution_result() {
         .clone();
     let value: serde_json::Value = serde_json::from_slice(&output).expect("valid json");
     assert_eq!(value["language"], "python");
-    assert_eq!(value["stdout"], "json-ok\n");
+    assert_eq!(
+        value["stdout"].as_str().unwrap_or("").replace("\r\n", "\n"),
+        "json-ok\n"
+    );
     assert_eq!(value["exit_code"], 0);
 }
 
