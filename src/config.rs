@@ -47,22 +47,7 @@ impl RunConfig {
     }
 
     pub fn apply_env(&self) {
-        if let Some(secs) = self.timeout
-            && std::env::var("RUN_TIMEOUT_SECS").is_err()
-        {
-            // SAFETY: called once at startup before any threads are spawned.
-            unsafe {
-                std::env::set_var("RUN_TIMEOUT_SECS", secs.to_string());
-            }
-        }
-        if let Some(true) = self.timing
-            && std::env::var("RUN_TIMING").is_err()
-        {
-            // SAFETY: called once at startup before any threads are spawned.
-            unsafe {
-                std::env::set_var("RUN_TIMING", "1");
-            }
-        }
+        crate::runtime::apply_config_defaults(self.timeout, self.timing);
     }
 
     pub fn find_config_path() -> Option<PathBuf> {

@@ -230,7 +230,7 @@ impl PhpSession {
 
 impl LanguageSession for PhpSession {
     fn language_id(&self) -> &str {
-        self.language_id()
+        "php"
     }
 
     fn eval(&mut self, code: &str) -> Result<ExecutionOutcome> {

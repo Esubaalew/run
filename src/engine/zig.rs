@@ -99,11 +99,37 @@ impl LanguageEngine for ZigEngine {
         cmd.arg("version")
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        cmd.status()
+        if !cmd
+            .status()
             .with_context(|| format!("failed to invoke {}", executable.display()))?
             .success()
-            .then_some(())
-            .ok_or_else(|| anyhow::anyhow!("{} is not executable", executable.display()))
+        {
+            anyhow::bail!("{} is not executable", executable.display());
+        }
+
+        let dir = tempfile::Builder::new()
+            .prefix("run-zig-validate")
+            .tempdir()
+            .context("failed to create Zig validation workspace")?;
+        let source = dir.path().join("main.zig");
+        std::fs::write(&source, "pub fn main() void {}\n")
+            .context("failed to write Zig validation source")?;
+        let output = Command::new(executable)
+            .arg("build-exe")
+            .arg(&source)
+            .arg("-femit-bin=main")
+            .current_dir(dir.path())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output()
+            .with_context(|| format!("failed to validate Zig compiler {}", executable.display()))?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "Zig compiler failed validation: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(())
     }
 
     fn toolchain_version(&self) -> Result<Option<String>> {
@@ -184,9 +210,19 @@ impl LanguageEngine for ZigEngine {
                 .stderr(Stdio::piped())
                 .current_dir(dir);
 
-            if let Ok(build_output) = build_cmd.output()
-                && build_output.status.success()
-                && bin_path.exists()
+            let build_output = build_cmd
+                .output()
+                .with_context(|| "failed to invoke zig build-exe")?;
+            if !build_output.status.success() || !bin_path.exists() {
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: build_output.status.code(),
+                    stdout: String::from_utf8_lossy(&build_output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&build_output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
+            }
+
             {
                 cache_store("zig", h, &bin_path);
                 let mut run_cmd = Command::new(&bin_path);
@@ -195,29 +231,30 @@ impl LanguageEngine for ZigEngine {
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .stdin(Stdio::inherit());
-                if let Ok(output) = run_cmd.output() {
-                    drop(temp_dir);
-                    let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-                    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-                    if output.status.success() && !stderr.contains("error:") {
-                        if stdout.is_empty() {
-                            stdout = stderr.clone();
-                        } else if !stderr.is_empty() {
-                            stdout.push_str(&stderr);
-                        }
+                let output = run_cmd
+                    .output()
+                    .with_context(|| "failed to execute compiled Zig artifact")?;
+                drop(temp_dir);
+                let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+                let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+                if output.status.success() && !stderr.contains("error:") {
+                    if stdout.is_empty() {
+                        stdout = stderr.clone();
+                    } else if !stderr.is_empty() {
+                        stdout.push_str(&stderr);
                     }
-                    return Ok(ExecutionOutcome {
-                        language: self.id().to_string(),
-                        exit_code: output.status.code(),
-                        stdout,
-                        stderr: if output.status.success() && !stderr.contains("error:") {
-                            String::new()
-                        } else {
-                            stderr
-                        },
-                        duration: start.elapsed(),
-                    });
                 }
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: output.status.code(),
+                    stdout,
+                    stderr: if output.status.success() && !stderr.contains("error:") {
+                        String::new()
+                    } else {
+                        stderr
+                    },
+                    duration: start.elapsed(),
+                });
             }
         }
 

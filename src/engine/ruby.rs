@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
@@ -156,7 +156,10 @@ impl LanguageEngine for RubyEngine {
                 match reader.read_line(&mut buf) {
                     Ok(0) => break,
                     Ok(_) => {
-                        let mut lock = stderr_collector.lock().expect("stderr collector poisoned");
+                        let mut lock = match stderr_collector.lock() {
+                            Ok(lock) => lock,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
                         lock.push_str(&buf);
                     }
                     Err(_) => break,
@@ -237,7 +240,10 @@ impl RubySession {
     }
 
     fn take_stderr(&self) -> String {
-        let mut lock = self.stderr.lock().expect("stderr lock poisoned");
+        let mut lock = match self.stderr.lock() {
+            Ok(lock) => lock,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         if lock.is_empty() {
             String::new()
         } else {
@@ -278,7 +284,18 @@ impl LanguageSession for RubySession {
             let _ = stdin.write_all(b"exit\n");
             let _ = stdin.flush();
         }
-        let _ = self.child.wait();
+        let start = Instant::now();
+        loop {
+            if self.child.try_wait()?.is_some() {
+                break;
+            }
+            if start.elapsed() >= Duration::from_secs(2) {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+                break;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
         Ok(())
     }
 }

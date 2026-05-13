@@ -508,10 +508,11 @@ fn get_rust_crate_name(path: &Path) -> Result<String> {
 
     for line in content.lines() {
         let line = line.trim();
-        if line.starts_with("name") && line.contains('=') {
-            if let Some(name) = line.split('=').nth(1) {
-                return Ok(name.trim().trim_matches('"').to_string());
-            }
+        if line.starts_with("name")
+            && line.contains('=')
+            && let Some(name) = line.split('=').nth(1)
+        {
+            return Ok(name.trim().trim_matches('"').to_string());
         }
     }
 
@@ -544,21 +545,20 @@ fn find_js_entry(path: &Path) -> Result<PathBuf> {
     }
 
     let package_json = path.join("package.json");
-    if package_json.exists() {
-        if let Ok(content) = std::fs::read_to_string(&package_json) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(main) = json.get("main").and_then(|v| v.as_str()) {
-                    let candidate = path.join(main);
-                    if candidate.exists() {
-                        return Ok(candidate);
-                    }
-                }
-                if let Some(module) = json.get("module").and_then(|v| v.as_str()) {
-                    let candidate = path.join(module);
-                    if candidate.exists() {
-                        return Ok(candidate);
-                    }
-                }
+    if package_json.exists()
+        && let Ok(content) = std::fs::read_to_string(&package_json)
+        && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
+    {
+        if let Some(main) = json.get("main").and_then(|v| v.as_str()) {
+            let candidate = path.join(main);
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+        if let Some(module) = json.get("module").and_then(|v| v.as_str()) {
+            let candidate = path.join(module);
+            if candidate.exists() {
+                return Ok(candidate);
             }
         }
     }
@@ -681,11 +681,11 @@ fn extract_exports(wit: &str) -> Vec<String> {
 
     for line in wit.lines() {
         let line = line.trim();
-        if line.starts_with("export ") {
-            if let Some(name) = line.strip_prefix("export ") {
-                let name = name.trim_end_matches(';').trim();
-                exports.push(name.to_string());
-            }
+        if line.starts_with("export ")
+            && let Some(name) = line.strip_prefix("export ")
+        {
+            let name = name.trim_end_matches(';').trim();
+            exports.push(name.to_string());
         }
     }
 
@@ -697,11 +697,11 @@ fn extract_imports(wit: &str) -> Vec<String> {
 
     for line in wit.lines() {
         let line = line.trim();
-        if line.starts_with("import ") {
-            if let Some(name) = line.strip_prefix("import ") {
-                let name = name.trim_end_matches(';').trim();
-                imports.push(name.to_string());
-            }
+        if line.starts_with("import ")
+            && let Some(name) = line.strip_prefix("import ")
+        {
+            let name = name.trim_end_matches(';').trim();
+            imports.push(name.to_string());
         }
     }
 

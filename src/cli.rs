@@ -1,7 +1,7 @@
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use clap::{Parser, ValueHint, builder::NonEmptyStringValueParser};
 
 use crate::language::LanguageSpec;
@@ -19,6 +19,7 @@ pub struct ExecutionSpec {
     pub source: InputSource,
     pub detect_language: bool,
     pub args: Vec<String>,
+    pub json: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,8 +45,36 @@ pub enum Command {
     Watch {
         spec: ExecutionSpec,
     },
+    WatchFile {
+        path: PathBuf,
+        language: Option<LanguageSpec>,
+        args: Vec<String>,
+    },
+    Format {
+        path: PathBuf,
+    },
+    Snippet {
+        language: LanguageSpec,
+        name: Option<String>,
+        list: bool,
+    },
+    Doctor,
+    Cache {
+        action: CacheAction,
+    },
+    Share {
+        path: PathBuf,
+        port: Option<u16>,
+    },
     PerfReport,
     PerfReset,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheAction {
+    Stats,
+    Clear,
+    ClearLang(String),
 }
 
 pub fn parse() -> Result<Command> {
@@ -61,7 +90,7 @@ pub fn parse() -> Result<Command> {
         return Ok(Command::PerfReset);
     }
     if cli.check {
-        return Ok(Command::CheckToolchains);
+        return Ok(Command::Doctor);
     }
     if cli.versions {
         ensure!(
@@ -98,16 +127,10 @@ pub fn parse() -> Result<Command> {
         });
     }
 
-    // Apply --timeout if provided
-    if let Some(secs) = cli.timeout {
-        // SAFETY: called at startup before any threads are spawned
-        unsafe { std::env::set_var("RUN_TIMEOUT_SECS", secs.to_string()) };
-    }
+    crate::runtime::set_timeout(cli.timeout);
 
-    // Apply --timing if provided
     if cli.timing {
-        // SAFETY: called at startup before any threads are spawned
-        unsafe { std::env::set_var("RUN_TIMING", "1") };
+        crate::runtime::enable_timing();
     }
 
     if let Some(code) = cli.code.as_ref() {
@@ -117,8 +140,12 @@ pub fn parse() -> Result<Command> {
         );
     }
 
-    let mut detect_language = !cli.no_detect;
     let mut trailing = cli.args.clone();
+    if let Some(command) = parse_subcommand(&mut trailing, cli.lang.as_deref())? {
+        return Ok(command);
+    }
+
+    let mut detect_language = !cli.no_detect;
     let mut script_args: Vec<String> = Vec::new();
 
     let mut language = cli
@@ -244,6 +271,7 @@ pub fn parse() -> Result<Command> {
             source,
             detect_language,
             args: script_args,
+            json: cli.json,
         };
         if let Some(n) = cli.bench {
             return Ok(Command::Bench {
@@ -302,13 +330,17 @@ struct Cli {
     #[arg(long = "no-detect", action = clap::ArgAction::SetTrue)]
     no_detect: bool,
 
-    /// Maximum execution time in seconds (default: 60, override with RUN_TIMEOUT_SECS)
+    /// Maximum execution time in seconds (0 = unlimited, override with RUN_TIMEOUT_SECS)
     #[arg(long = "timeout", value_name = "SECS")]
     timeout: Option<u64>,
 
     /// Show execution timing after each run
     #[arg(long = "timing", action = clap::ArgAction::SetTrue)]
     timing: bool,
+
+    /// Emit a machine-readable JSON envelope for one-shot execution
+    #[arg(long = "json", action = clap::ArgAction::SetTrue)]
+    json: bool,
 
     /// Check which language toolchains are available
     #[arg(long = "check", action = clap::ArgAction::SetTrue)]
@@ -360,9 +392,120 @@ fn split_at_double_dash(tokens: &[String]) -> (Vec<String>, Vec<String>) {
     }
 }
 
+fn parse_subcommand(args: &mut Vec<String>, lang: Option<&str>) -> Result<Option<Command>> {
+    let Some(first) = args.first().map(String::as_str) else {
+        return Ok(None);
+    };
+
+    match first {
+        "doctor" => {
+            args.remove(0);
+            ensure!(
+                args.is_empty(),
+                "doctor does not accept positional arguments"
+            );
+            Ok(Some(Command::Doctor))
+        }
+        "fmt" => {
+            args.remove(0);
+            ensure!(!args.is_empty(), "fmt requires a file path");
+            let path = PathBuf::from(args.remove(0));
+            ensure!(args.is_empty(), "fmt accepts exactly one file path");
+            Ok(Some(Command::Format { path }))
+        }
+        "snippet" => {
+            args.remove(0);
+            ensure!(!args.is_empty(), "snippet requires a language");
+            let language = LanguageSpec::new(args.remove(0));
+            let list = args
+                .first()
+                .is_some_and(|arg| arg == "--list" || arg == "-l");
+            let name = if list {
+                args.remove(0);
+                None
+            } else {
+                args.first().cloned()
+            };
+            if name.is_some() {
+                args.remove(0);
+            }
+            ensure!(
+                args.is_empty(),
+                "unexpected arguments after snippet command"
+            );
+            Ok(Some(Command::Snippet {
+                language,
+                name,
+                list,
+            }))
+        }
+        "cache" => {
+            args.remove(0);
+            let action = match args.first().map(String::as_str) {
+                None | Some("--stats") | Some("stats") => {
+                    if !args.is_empty() {
+                        args.remove(0);
+                    }
+                    CacheAction::Stats
+                }
+                Some("--clear") | Some("clear") => {
+                    args.remove(0);
+                    CacheAction::Clear
+                }
+                Some("--clear-lang") | Some("clear-lang") => {
+                    args.remove(0);
+                    ensure!(!args.is_empty(), "cache --clear-lang requires a language");
+                    CacheAction::ClearLang(args.remove(0))
+                }
+                Some(other) => anyhow::bail!("unknown cache action '{other}'"),
+            };
+            ensure!(args.is_empty(), "unexpected arguments after cache command");
+            Ok(Some(Command::Cache { action }))
+        }
+        "watch" => {
+            args.remove(0);
+            ensure!(!args.is_empty(), "watch requires a file path");
+            let path = PathBuf::from(args.remove(0));
+            let mut rest = std::mem::take(args);
+            if rest.first().map(|token| token.as_str()) == Some("--") {
+                rest.remove(0);
+            }
+            Ok(Some(Command::WatchFile {
+                path,
+                language: lang.map(|value| LanguageSpec::new(value.to_string())),
+                args: rest,
+            }))
+        }
+        "share" => {
+            args.remove(0);
+            let mut port = None;
+            let mut path = None;
+            while let Some(arg) = args.first().cloned() {
+                args.remove(0);
+                if arg == "--port" {
+                    ensure!(!args.is_empty(), "share --port requires a port");
+                    let value = args.remove(0);
+                    port = Some(value.parse::<u16>()?);
+                } else if path.is_none() {
+                    path = Some(PathBuf::from(arg));
+                } else {
+                    anyhow::bail!("share accepts exactly one file path");
+                }
+            }
+            let path = path.context("share requires a file path")?;
+            Ok(Some(Command::Share { path, port }))
+        }
+        _ => Ok(None),
+    }
+}
+
 fn looks_like_path(token: &str) -> bool {
     if token == "-" {
         return true;
+    }
+
+    if token.starts_with('-') || token.starts_with('"') || token.starts_with('\'') {
+        return false;
     }
 
     let path = Path::new(token);
@@ -372,10 +515,6 @@ fn looks_like_path(token: &str) -> bool {
     }
 
     if token.starts_with("./") || token.starts_with("../") || token.starts_with("~/") {
-        return true;
-    }
-
-    if std::fs::metadata(path).is_ok() {
         return true;
     }
 
@@ -391,6 +530,10 @@ fn looks_like_path(token: &str) -> bool {
         {
             return true;
         }
+    }
+
+    if token.contains(std::path::MAIN_SEPARATOR) || token.contains('/') || token.contains('\\') {
+        return std::fs::metadata(path).is_ok();
     }
 
     false

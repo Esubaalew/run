@@ -124,10 +124,10 @@ pub async fn execute(cmd: V2Command, project_dir: PathBuf) -> Result<i32> {
             verbose,
         } => {
             let config_path = project_dir.join("run.toml");
-            if let Ok(config) = RunConfig::load(&config_path) {
-                if let Ok(plugins) = PluginManager::load_all(&config, &project_dir).await {
-                    let _ = plugins.run_hook(PluginHook::DevStart);
-                }
+            if let Ok(config) = RunConfig::load(&config_path)
+                && let Ok(plugins) = PluginManager::load_all(&config, &project_dir).await
+            {
+                let _ = plugins.run_hook(PluginHook::DevStart);
             }
             let options = DevOptions {
                 project_dir,
@@ -254,22 +254,22 @@ pub async fn execute(cmd: V2Command, project_dir: PathBuf) -> Result<i32> {
 
             // Pre-load installed dependencies so cross-component imports resolve.
             let deps_dir = project_dir.join(".run").join("components");
-            if deps_dir.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(&deps_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.extension().map(|e| e == "wasm").unwrap_or(false) {
-                            let dep_name = path
-                                .file_stem()
-                                .map(|s| s.to_string_lossy().to_string())
-                                .unwrap_or_default();
-                            let base_name = dep_name
-                                .rsplit_once('@')
-                                .map(|(n, _)| n.to_string())
-                                .unwrap_or_else(|| dep_name.clone());
-                            if let Ok(bytes) = std::fs::read(&path) {
-                                let _ = engine.load_component_bytes(&base_name, bytes);
-                            }
+            if deps_dir.is_dir()
+                && let Ok(entries) = std::fs::read_dir(&deps_dir)
+            {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "wasm").unwrap_or(false) {
+                        let dep_name = path
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        let base_name = dep_name
+                            .rsplit_once('@')
+                            .map(|(n, _)| n.to_string())
+                            .unwrap_or_else(|| dep_name.clone());
+                        if let Ok(bytes) = std::fs::read(&path) {
+                            let _ = engine.load_component_bytes(&base_name, bytes);
                         }
                     }
                 }
@@ -497,11 +497,12 @@ world hello-world {{
 
             // Append component to run.toml
             let mut toml_content = std::fs::read_to_string(&config_path)?;
-            toml_content.push_str(&format!(
-                "\n[components.hello]\npath = \"components/hello.wasm\"\n\n\
+            toml_content.push_str(
+                &"\n[components.hello]\npath = \"components/hello.wasm\"\n\n\
                  [tests.greet_42]\ncomponent = \"hello\"\nfunction = \"greet\"\n\
                  args = [\"s32:42\"]\nexpect = \"s32:43\"\n"
-            ));
+                    .to_string(),
+            );
             std::fs::write(&config_path, toml_content)?;
 
             println!("Initialized Run 2.0 project: {}", name);
@@ -548,14 +549,13 @@ world hello-world {{
                         .file_stem()
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_else(|| "unknown".into());
-                    if let Ok(id) = engine.load_component_bytes(&comp_id, bytes) {
-                        if let Some(info) = engine.get_loaded_component(&id) {
-                            if !info.exports.is_empty() {
-                                println!("\nExports:");
-                                for e in &info.exports {
-                                    println!("  - {}", e);
-                                }
-                            }
+                    if let Ok(id) = engine.load_component_bytes(&comp_id, bytes)
+                        && let Some(info) = engine.get_loaded_component(&id)
+                        && !info.exports.is_empty()
+                    {
+                        println!("\nExports:");
+                        for e in &info.exports {
+                            println!("  - {}", e);
                         }
                     }
 
@@ -763,10 +763,10 @@ world hello-world {{
             json,
         } => {
             let config_path = project_dir.join("run.toml");
-            if let Ok(config) = RunConfig::load(&config_path) {
-                if let Ok(plugins) = PluginManager::load_all(&config, &project_dir).await {
-                    let _ = plugins.run_hook(PluginHook::Test);
-                }
+            if let Ok(config) = RunConfig::load(&config_path)
+                && let Ok(plugins) = PluginManager::load_all(&config, &project_dir).await
+            {
+                let _ = plugins.run_hook(PluginHook::Test);
             }
             let options = TestOptions {
                 project_dir,

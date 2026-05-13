@@ -365,11 +365,17 @@ fn main() -> Result<()> {
         }
     }
 
-    // Load project config (run.toml / .runrc) and apply environment overrides
-    let config = run::config::RunConfig::discover();
-    config.apply_env();
-
     let command = run::cli::parse()?;
+    if !matches!(
+        command,
+        run::cli::Command::ShowVersion
+            | run::cli::Command::PerfReport
+            | run::cli::Command::PerfReset
+            | run::cli::Command::Cache { .. }
+    ) {
+        let config = run::config::RunConfig::discover();
+        config.apply_env();
+    }
     let exit_code = run::app::run(command)?;
     if exit_code != 0 {
         std::process::exit(exit_code);

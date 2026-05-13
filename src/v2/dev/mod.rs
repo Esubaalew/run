@@ -223,34 +223,31 @@ impl DevSession {
 
         // Pre-load installed dependencies so they're available as import providers.
         let deps_dir = self.project_dir.join(".run").join("components");
-        if deps_dir.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(&deps_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().map(|e| e == "wasm").unwrap_or(false) {
-                        let dep_name = path
-                            .file_stem()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        // Strip @version suffix: "foo@1.0.0" -> "foo"
-                        let base_name = dep_name
-                            .rsplit_once('@')
-                            .map(|(name, _)| name.to_string())
-                            .unwrap_or_else(|| dep_name.clone());
-                        let bytes = match std::fs::read(&path) {
-                            Ok(b) => b,
-                            Err(_) => continue,
-                        };
-                        let mut runtime_lock = self.runtime.lock().unwrap();
-                        match runtime_lock.load_component_bytes(&base_name, bytes) {
-                            Ok(id) => {
-                                drop(runtime_lock);
-                                let _ = self.orchestrator.register(&id, vec![]);
-                                self.output
-                                    .log_system(&format!("dependency '{}' loaded", base_name));
-                            }
-                            Err(_) => {}
-                        }
+        if deps_dir.is_dir()
+            && let Ok(entries) = std::fs::read_dir(&deps_dir)
+        {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "wasm").unwrap_or(false) {
+                    let dep_name = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    // Strip @version suffix: "foo@1.0.0" -> "foo"
+                    let base_name = dep_name
+                        .rsplit_once('@')
+                        .map(|(name, _)| name.to_string())
+                        .unwrap_or_else(|| dep_name.clone());
+                    let bytes = match std::fs::read(&path) {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    };
+                    let mut runtime_lock = self.runtime.lock().unwrap();
+                    if let Ok(id) = runtime_lock.load_component_bytes(&base_name, bytes) {
+                        drop(runtime_lock);
+                        let _ = self.orchestrator.register(&id, vec![]);
+                        self.output
+                            .log_system(&format!("dependency '{}' loaded", base_name));
                     }
                 }
             }
@@ -338,10 +335,10 @@ impl DevSession {
                 OrchestratorEvent::ComponentRestarted { id, attempt } => {
                     output_clone.log_component(id, &format!("restarted (attempt {})", attempt));
                 }
-                OrchestratorEvent::ComponentCall { from, to, function } => {
-                    if output_clone.is_verbose() {
-                        output_clone.log_call(from, to, function);
-                    }
+                OrchestratorEvent::ComponentCall { from, to, function }
+                    if output_clone.is_verbose() =>
+                {
+                    output_clone.log_call(from, to, function);
                 }
                 _ => {}
             }));
@@ -463,10 +460,10 @@ fn find_component_for_file(file_path: &Path, config: &RunConfig) -> Option<Strin
     let file_path_str = file_path.to_string_lossy();
 
     for (name, comp_config) in &config.components {
-        if let Some(ref comp_path) = comp_config.path {
-            if file_path_str.contains(comp_path) {
-                return Some(name.clone());
-            }
+        if let Some(ref comp_path) = comp_config.path
+            && file_path_str.contains(comp_path)
+        {
+            return Some(name.clone());
         }
 
         if file_path_str.contains(name) {
@@ -476,12 +473,12 @@ fn find_component_for_file(file_path: &Path, config: &RunConfig) -> Option<Strin
 
     let parts: Vec<&str> = file_path_str.split(std::path::MAIN_SEPARATOR).collect();
     for (i, part) in parts.iter().enumerate() {
-        if *part == "src" || *part == "components" {
-            if let Some(next) = parts.get(i + 1) {
-                for name in config.components.keys() {
-                    if name.contains(next) || next.contains(name.as_str()) {
-                        return Some(name.clone());
-                    }
+        if (*part == "src" || *part == "components")
+            && let Some(next) = parts.get(i + 1)
+        {
+            for name in config.components.keys() {
+                if name.contains(next) || next.contains(name.as_str()) {
+                    return Some(name.clone());
                 }
             }
         }
@@ -564,16 +561,16 @@ fn parse_capability_string(s: &str) -> Option<Capability> {
 }
 
 fn apply_service_env(config: &RunConfig, service: &str, info: &ConnectionInfo) {
-    if let Some(service_config) = config.docker.services.get(service) {
-        if let Some(env_var) = &service_config.env_var {
-            let url = if !service_config.url.is_empty() {
-                service_config.url.clone()
-            } else {
-                derive_service_url(service, info)
-            };
-            // SAFETY: This is single-threaded during dev session initialization
-            unsafe { std::env::set_var(env_var, url) };
-        }
+    if let Some(service_config) = config.docker.services.get(service)
+        && let Some(env_var) = &service_config.env_var
+    {
+        let url = if !service_config.url.is_empty() {
+            service_config.url.clone()
+        } else {
+            derive_service_url(service, info)
+        };
+        // SAFETY: This is single-threaded during dev session initialization
+        unsafe { std::env::set_var(env_var, url) };
     }
 }
 

@@ -83,10 +83,10 @@ impl Lockfile {
             }
         }
 
-        if let Some(comp) = current_component {
-            if !comp.name.is_empty() {
-                lockfile.components.insert(comp.name.clone(), comp);
-            }
+        if let Some(comp) = current_component
+            && !comp.name.is_empty()
+        {
+            lockfile.components.insert(comp.name.clone(), comp);
         }
 
         Ok(lockfile)

@@ -112,10 +112,10 @@ fn resolve_output_dir(
     if let Some(ref output) = options.output_dir {
         return Ok(output.clone());
     }
-    if let Some(profile) = profile {
-        if let Some(path) = profile.options.get("output_dir") {
-            return Ok(project_dir.join(path));
-        }
+    if let Some(profile) = profile
+        && let Some(path) = profile.options.get("output_dir")
+    {
+        return Ok(project_dir.join(path));
     }
     Ok(project_dir.join("dist").join("deploy"))
 }
@@ -131,10 +131,10 @@ fn package_local(
     let mut components = Vec::new();
 
     for (name, comp) in &config.components {
-        if let Some(filter) = component_filter {
-            if name != filter {
-                continue;
-            }
+        if let Some(filter) = component_filter
+            && name != filter
+        {
+            continue;
         }
 
         let wasm_path = resolve_component_path(config, project_dir, name)?;
@@ -204,11 +204,11 @@ async fn publish_registry(
 
     let client = RegistryClient::new(registry_config);
 
-    for (name, _comp) in &config.components {
-        if let Some(filter) = options.component.as_deref() {
-            if name != filter {
-                continue;
-            }
+    for name in config.components.keys() {
+        if let Some(filter) = options.component.as_deref()
+            && name != filter
+        {
+            continue;
         }
 
         let wasm_path = resolve_component_path(config, &options.project_dir, name)?;
@@ -289,11 +289,11 @@ async fn deploy_edge_target(
 
     let provider = EdgeProvider::from_str(provider_str)?;
 
-    for (name, _comp) in &config.components {
-        if let Some(filter) = options.component.as_deref() {
-            if name != filter {
-                continue;
-            }
+    for name in config.components.keys() {
+        if let Some(filter) = options.component.as_deref()
+            && name != filter
+        {
+            continue;
         }
 
         let wasm_path = resolve_component_path(config, &options.project_dir, name)?;

@@ -56,24 +56,24 @@ impl ComponentCache {
             let entry = entry?;
             let path = entry.path();
 
-            if path.extension().map(|e| e == "wasm").unwrap_or(false) {
-                if let Some((name, version)) = parse_cache_filename(&path) {
-                    let metadata = std::fs::metadata(&path)?;
+            if path.extension().map(|e| e == "wasm").unwrap_or(false)
+                && let Some((name, version)) = parse_cache_filename(&path)
+            {
+                let metadata = std::fs::metadata(&path)?;
 
-                    let cached = CachedEntry {
-                        version,
-                        path: path.clone(),
-                        size: metadata.len() as usize,
-                        last_used: metadata
-                            .modified()
-                            .ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs())
-                            .unwrap_or(0),
-                    };
+                let cached = CachedEntry {
+                    version,
+                    path: path.clone(),
+                    size: metadata.len() as usize,
+                    last_used: metadata
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0),
+                };
 
-                    self.index.entry(name).or_default().push(cached);
-                }
+                self.index.entry(name).or_default().push(cached);
             }
         }
 
@@ -90,10 +90,8 @@ impl ComponentCache {
         };
 
         for entry in entries {
-            if version_req.matches(&entry.version) {
-                if entry.path.exists() {
-                    return Ok(Some(entry.path.clone()));
-                }
+            if version_req.matches(&entry.version) && entry.path.exists() {
+                return Ok(Some(entry.path.clone()));
             }
         }
 
@@ -186,7 +184,7 @@ impl ComponentCache {
             .flat_map(|(name, entries)| entries.iter().map(move |e| (name.clone(), e.clone())))
             .collect();
 
-        all_entries.sort_by(|a, b| a.1.last_used.cmp(&b.1.last_used));
+        all_entries.sort_by_key(|a| a.1.last_used);
 
         let mut freed = 0;
         for (name, entry) in all_entries {
@@ -261,7 +259,7 @@ fn parse_cache_filename(path: &Path) -> Option<(String, Version)> {
     Some((unsafe_filename(name), version))
 }
 fn safe_filename(name: &str) -> String {
-    name.replace(':', "__").replace('/', "_").replace('\\', "_")
+    name.replace(':', "__").replace(['/', '\\'], "_")
 }
 fn unsafe_filename(safe: &str) -> String {
     safe.replace("__", ":").replace('_', "/")

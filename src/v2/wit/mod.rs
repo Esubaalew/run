@@ -39,7 +39,7 @@ impl WitPackageId {
             namespace: namespace.to_string(),
             name: name.to_string(),
             version: version
-                .map(|v| semver::Version::parse(v))
+                .map(semver::Version::parse)
                 .transpose()
                 .map_err(|e| crate::v2::Error::other(format!("Invalid version: {}", e)))?,
         })

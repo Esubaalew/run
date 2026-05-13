@@ -75,7 +75,7 @@ impl Dependency {
         self
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct InstallOptions {
     pub install_dir: Option<PathBuf>,
 
@@ -90,18 +90,6 @@ pub struct InstallOptions {
     pub dev: bool,
 }
 
-impl Default for InstallOptions {
-    fn default() -> Self {
-        Self {
-            install_dir: None,
-            skip_lockfile: false,
-            force: false,
-            offline: false,
-            verify: false,
-            dev: false,
-        }
-    }
-}
 pub struct Registry {
     client: RegistryClient,
 
@@ -225,33 +213,31 @@ impl Registry {
             }
         }
 
-        if let Some(ref local) = self.local {
-            if let Ok(versions) = local.get_versions(name) {
-                for ver in versions.iter().rev() {
-                    if version_req.matches(ver) {
-                        if let Ok(bytes) = local.get_component_verified(name, ver) {
-                            let hash = compute_sha256(&bytes);
+        if let Some(ref local) = self.local
+            && let Ok(versions) = local.get_versions(name)
+        {
+            for ver in versions.iter().rev() {
+                if version_req.matches(ver)
+                    && let Ok(bytes) = local.get_component_verified(name, ver)
+                {
+                    let hash = compute_sha256(&bytes);
 
-                            let _cached_path = self.cache.store(name, ver, &bytes)?;
-                            let installed_path =
-                                write_to_install_dir(&install_dir, name, ver, &bytes)?;
+                    let _cached_path = self.cache.store(name, ver, &bytes)?;
+                    let installed_path = write_to_install_dir(&install_dir, name, ver, &bytes)?;
 
-                            if !options.skip_lockfile {
-                                let mut lockfile =
-                                    self.lockfile.take().unwrap_or_else(Lockfile::new);
-                                lockfile.add(LockedComponent {
-                                    name: name.to_string(),
-                                    version: ver.clone(),
-                                    sha256: hash,
-                                    dependencies: vec![],
-                                });
-                                self.lockfile = Some(lockfile);
-                                self.save_lockfile()?;
-                            }
-
-                            return Ok(installed_path);
-                        }
+                    if !options.skip_lockfile {
+                        let mut lockfile = self.lockfile.take().unwrap_or_default();
+                        lockfile.add(LockedComponent {
+                            name: name.to_string(),
+                            version: ver.clone(),
+                            sha256: hash,
+                            dependencies: vec![],
+                        });
+                        self.lockfile = Some(lockfile);
+                        self.save_lockfile()?;
                     }
+
+                    return Ok(installed_path);
                 }
             }
         }
@@ -300,14 +286,12 @@ impl Registry {
             let component_bytes = self.client.download(&dep.name, &dep.version).await?;
 
             let actual_hash = compute_sha256(&component_bytes);
-            if self.always_verify || options.verify {
-                if actual_hash != dep.sha256 {
-                    return Err(Error::HashMismatch {
-                        package: dep.name.clone(),
-                        expected: dep.sha256.clone(),
-                        actual: actual_hash,
-                    });
-                }
+            if (self.always_verify || options.verify) && actual_hash != dep.sha256 {
+                return Err(Error::HashMismatch {
+                    package: dep.name.clone(),
+                    expected: dep.sha256.clone(),
+                    actual: actual_hash,
+                });
             }
 
             self.cache
@@ -325,7 +309,7 @@ impl Registry {
         }
 
         if !options.skip_lockfile {
-            let mut lockfile = self.lockfile.take().unwrap_or_else(Lockfile::new);
+            let mut lockfile = self.lockfile.take().unwrap_or_default();
             for dep in resolved {
                 lockfile.add(LockedComponent {
                     name: dep.name,
@@ -447,7 +431,7 @@ impl Registry {
 }
 
 fn safe_component_name(name: &str) -> String {
-    name.replace(':', "__").replace('/', "_").replace('\\', "_")
+    name.replace(':', "__").replace(['/', '\\'], "_")
 }
 
 fn install_filename(name: &str, version: &Version) -> String {

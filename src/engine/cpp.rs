@@ -113,10 +113,8 @@ impl CppEngine {
         let source_key = source
             .canonicalize()
             .unwrap_or_else(|_| source.to_path_buf());
-        let workspace = std::env::temp_dir().join(format!(
-            "run-cpp-inc-{:016x}",
-            hash_source(&source_key.to_string_lossy())
-        ));
+        let workspace =
+            crate::cache::workspace("cpp-file", hash_source(&source_key.to_string_lossy()))?;
         fs::create_dir_all(&workspace).with_context(|| {
             format!(
                 "failed to create C++ incremental workspace {}",

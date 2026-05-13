@@ -299,10 +299,10 @@ impl LocalRegistry {
         let mut results = Vec::new();
 
         for (name, versions) in &self.index.packages {
-            if name.to_lowercase().contains(&query_lower) {
-                if let Some(latest) = versions.iter().filter_map(|v| Version::parse(v).ok()).max() {
-                    results.push((name.clone(), latest));
-                }
+            if name.to_lowercase().contains(&query_lower)
+                && let Some(latest) = versions.iter().filter_map(|v| Version::parse(v).ok()).max()
+            {
+                results.push((name.clone(), latest));
             }
         }
 
@@ -314,10 +314,10 @@ impl LocalRegistry {
 
         for (name, versions) in &self.index.packages {
             for version_str in versions {
-                if let Ok(version) = Version::parse(version_str) {
-                    if let Err(e) = self.get_component_verified(name, &version) {
-                        errors.push((name.clone(), version, e.to_string()));
-                    }
+                if let Ok(version) = Version::parse(version_str)
+                    && let Err(e) = self.get_component_verified(name, &version)
+                {
+                    errors.push((name.clone(), version, e.to_string()));
                 }
             }
         }
@@ -357,8 +357,7 @@ pub struct RegistryStats {
 }
 fn safe_package_name(name: &str) -> String {
     name.replace(':', "__")
-        .replace('/', "_")
-        .replace('\\', "_")
+        .replace(['/', '\\'], "_")
         .replace('@', "_at_")
 }
 

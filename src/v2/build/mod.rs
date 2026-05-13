@@ -207,7 +207,7 @@ fn find_wit_dir(path: &Path) -> Result<PathBuf> {
 
     for candidate in candidates {
         if candidate.exists() {
-            return Ok(candidate.canonicalize().map_err(|e| Error::Io(e))?);
+            return candidate.canonicalize().map_err(Error::Io);
         }
     }
 

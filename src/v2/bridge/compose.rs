@@ -60,9 +60,9 @@ impl DockerCompose {
                             .build
                             .as_ref()
                             .map(|_| format!("target/wasm/{}.wasm", service_name)),
-                        source: service.build.as_ref().and_then(|b| match b {
-                            ComposeBuild::Simple(s) => Some(s.clone()),
-                            ComposeBuild::Complex { context, .. } => Some(context.clone()),
+                        source: service.build.as_ref().map(|b| match b {
+                            ComposeBuild::Simple(s) => s.clone(),
+                            ComposeBuild::Complex { context, .. } => context.clone(),
                         }),
                         language: None,
                         build: None,
@@ -265,7 +265,7 @@ pub fn migrate_compose_to_run(compose_path: &Path, output_path: &Path) -> Result
 
     println!("Migrated docker-compose.yml to {}", output_path.display());
     println!("\nWASI components:");
-    for (name, _) in &run_config.components {
+    for name in run_config.components.keys() {
         println!("  - {}", name);
     }
     println!("\nDocker services:");

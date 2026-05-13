@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use std::sync::{Arc, Mutex};
@@ -287,7 +287,18 @@ impl LanguageSession for JavascriptSession {
             let _ = stdin.write_all(b".exit\n");
             let _ = stdin.flush();
         }
-        let _ = self.child.wait();
+        let start = Instant::now();
+        loop {
+            if self.child.try_wait()?.is_some() {
+                break;
+            }
+            if start.elapsed() >= Duration::from_secs(2) {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+                break;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
         Ok(())
     }
 }

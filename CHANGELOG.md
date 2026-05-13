@@ -6,6 +6,35 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.8.0] - 2026-05-13
+
+### Added
+
+- `run doctor` diagnostics table for supported language toolchains.
+- `run cache --stats`, `run cache --clear`, and per-language cache clearing.
+- `run fmt <file>` formatter dispatch for Python, JavaScript/TypeScript, Rust, Go, C/C++, and Java.
+- `run snippet <lang> <name>` with curated built-in templates for the top languages.
+- `run watch <file>` notify-based file watching with debounced re-execution.
+- `run share <file>` local HTTP sharing with syntax-highlighted HTML and last output.
+- `--json` execution envelope and `--timeout <seconds>` exit-code-124 timeout handling.
+
+### Changed
+
+- Replaced the legacy temp compile cache with a blake3, toolchain-aware cache under the platform cache directory.
+- Moved REPL history to per-language XDG/AppData history files with duplicate suppression.
+- Deferred startup work for version/cache-only commands.
+- Changed the default timeout to unlimited (`0`).
+
+### Fixed
+
+- Prevent PHP REPL session `language_id` recursion.
+- Harden Ruby and JavaScript REPL shutdown paths.
+- Avoid a panic when the syntect theme map is missing the preferred theme.
+- Reject `:bench 0` instead of panicking on empty samples.
+- Reset REPL completion/session side state with `:reset`; added `:reset all`.
+- Treat broken Zig compiler/linker installs as unavailable during validation so gated tests skip cleanly.
+- Normalize CRLF snippets before shebang-based language detection.
+
 ## [0.7.0] - 2026-02-10
 
 ### Added
@@ -169,7 +198,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/esubaalew/run/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/esubaalew/run/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/esubaalew/run/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/esubaalew/run/compare/v0.5.1...v0.6.0

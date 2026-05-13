@@ -59,7 +59,13 @@ pub fn highlight_code(code: &str, language_id: &str) -> String {
 
     let syntax = get_syntax_for_language(language_id);
 
-    let theme = &THEME_SET.themes["base16-ocean.dark"];
+    let Some(theme) = THEME_SET
+        .themes
+        .get("base16-ocean.dark")
+        .or_else(|| THEME_SET.themes.values().next())
+    else {
+        return code.to_string();
+    };
 
     let mut highlighter = HighlightLines::new(syntax, theme);
     let mut output = String::new();

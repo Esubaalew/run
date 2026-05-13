@@ -52,6 +52,15 @@
 
 ---
 
+## What's New in 0.8
+
+- Toolchain-aware blake3 build cache under the platform cache directory with `run cache --stats` and `run cache --clear`.
+- New workflow commands: `run doctor`, `run fmt <file>`, `run snippet <lang> <name>`, `run watch <file>`, and `run share <file>`.
+- Scriptable execution via `--json` and predictable timeout behavior via `--timeout <seconds>` with exit code 124.
+- Per-language REPL history, safer reset behavior, and hardened child-process shutdown.
+
+---
+
 ## Run 2.0 (Experimental)
 
 Run 2.0 adds WASI 0.2 component support for cross-language composition, instant startup, and edge deployment.
@@ -338,12 +347,29 @@ run examples/rust/hello.rs
 
 ## Command-Line Flags Reference
 
-```bash
---lang, -l          Specify the programming language
---code, -c          Provide code as a string
+| Command / Flag | Purpose |
+| --- | --- |
+| `run <lang> -c <code>` | Execute inline code in a language |
+| `run <file>` | Execute a source file with extension-based detection |
+| `run watch <file>` | Re-run a file when it changes |
+| `run fmt <file>` | Format a source file in place using the standard formatter |
+| `run snippet <lang> <name>` | Print a built-in snippet template to stdout |
+| `run snippet <lang> --list` | List available templates for a language |
+| `run doctor` | Check all supported language toolchains and versions |
+| `run cache --stats` | Show persistent build cache usage |
+| `run cache --clear` | Clear the persistent build cache |
+| `run share <file> [--port N]` | Serve a local highlighted HTML view of a file |
+| `--lang`, `-l` | Specify the programming language |
+| `--code`, `-c` | Provide code as a string |
+| `--json` | Emit stdout/stderr/exit/duration as a JSON envelope |
+| `--timeout <seconds>` | Kill execution after N seconds (`0` means unlimited) |
+| `--bench <N>` | Benchmark a snippet for N iterations |
 
+```bash
 run -l python -c "print('hello')"
-run --lang python --code "print('hello')"
+run --json python -c "print('hello')"
+run snippet go goroutine-pool > pool.go
+run watch examples/python/counter.py
 ```
 
 ---

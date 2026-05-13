@@ -123,11 +123,11 @@ impl WitResolver {
 
             for world in component.worlds.values() {
                 for import in &world.imports {
-                    if let WitWorldItem::Interface { interface, .. } = import {
-                        if let WitInterfaceRef::External { package, .. } = interface {
-                            let dep_id = package.to_string();
-                            graph.add_edge(&component_id, &dep_id);
-                        }
+                    if let WitWorldItem::Interface { interface, .. } = import
+                        && let WitInterfaceRef::External { package, .. } = interface
+                    {
+                        let dep_id = package.to_string();
+                        graph.add_edge(&component_id, &dep_id);
                     }
                 }
             }

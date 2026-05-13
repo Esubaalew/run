@@ -1,12 +1,21 @@
+use std::borrow::Cow;
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 
 pub fn detect_language_from_snippet(code: &str) -> Option<&'static str> {
-    let trimmed = code.trim_start();
+    let normalized = if code.contains("\r\n") {
+        Cow::Owned(code.replace("\r\n", "\n"))
+    } else {
+        Cow::Borrowed(code)
+    };
+    let trimmed = normalized.trim_start();
     if trimmed.is_empty() {
         return None;
     }
 
+    // Detection is intentionally first-match-wins. Keep this order stable so
+    // ambiguous snippets resolve deterministically across releases.
     if PYTHON_SIGNATURE.is_match(trimmed) {
         return Some("python");
     }
@@ -227,3 +236,23 @@ static NIM_SIGNATURE: Lazy<Regex> = Lazy::new(|| {
     )
     .expect("valid nim regex")
 });
+
+#[cfg(test)]
+mod tests {
+    use super::detect_language_from_snippet;
+
+    #[test]
+    fn detection_handles_crlf_shebang() {
+        assert_eq!(
+            detect_language_from_snippet("#!/usr/bin/env bash\r\necho hi\r\n"),
+            Some("bash")
+        );
+    }
+
+    #[test]
+    fn ambiguous_detection_is_deterministic() {
+        let snippet = "print(\"hello\")";
+        assert_eq!(detect_language_from_snippet(snippet), Some("lua"));
+        assert_eq!(detect_language_from_snippet(snippet), Some("lua"));
+    }
+}

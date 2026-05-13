@@ -63,7 +63,7 @@ async fn deploy_cloudflare(deployment: EdgeDeployment) -> Result<String> {
     let api_token = deployment
         .options
         .get("api_token")
-        .map(|s| s.clone())
+        .cloned()
         .or_else(|| std::env::var("CLOUDFLARE_API_TOKEN").ok())
         .ok_or_else(|| Error::other("api_token or CLOUDFLARE_API_TOKEN required"))?;
 

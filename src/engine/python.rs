@@ -116,6 +116,10 @@ impl LanguageEngine for PythonEngine {
                 })?;
                 if let Some(mut stdin) = child.stdin.take() {
                     stdin.write_all(code.as_bytes())?;
+                    if !code.ends_with('\n') {
+                        stdin.write_all(b"\n")?;
+                    }
+                    stdin.flush()?;
                 }
                 wait_with_timeout(child, timeout)?
             }

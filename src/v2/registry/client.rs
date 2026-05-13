@@ -256,11 +256,11 @@ impl RegistryClient {
     /// the client's configured registry URL instead.  This guards
     /// against a server whose REGISTRY_URL env var was not set.
     fn rewrite_download_url(&self, raw: &str) -> String {
-        if raw.starts_with("http://localhost") || raw.starts_with("http://127.0.0.1") {
-            if let Some(path_start) = raw.find("/packages/") {
-                let base = self.config.registry_url.trim_end_matches('/');
-                return format!("{}{}", base, &raw[path_start..]);
-            }
+        if (raw.starts_with("http://localhost") || raw.starts_with("http://127.0.0.1"))
+            && let Some(path_start) = raw.find("/packages/")
+        {
+            let base = self.config.registry_url.trim_end_matches('/');
+            return format!("{}{}", base, &raw[path_start..]);
         }
         raw.to_string()
     }

@@ -77,7 +77,7 @@ impl PluginManager {
 
     pub fn run_hook(&self, hook: PluginHook) -> Result<()> {
         let fn_name = hook.function_name();
-        for (_name, plugin) in &self.plugins {
+        for plugin in self.plugins.values() {
             if !plugin.hooks.is_empty() && !plugin.hooks.contains(fn_name) {
                 continue;
             }

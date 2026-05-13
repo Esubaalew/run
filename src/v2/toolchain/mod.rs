@@ -102,18 +102,18 @@ impl ToolchainManager {
     }
 
     pub fn ensure_toolchain(&self, name: &str) -> Result<()> {
-        if let Some(ref lockfile) = self.lockfile {
-            if !lockfile.verify_toolchain(name)? {
-                return Err(Error::other(format!(
-                    "Toolchain '{}' version mismatch. Expected {}, run `run toolchain sync`",
-                    name,
-                    lockfile
-                        .toolchains
-                        .get(name)
-                        .map(|e| e.version.as_str())
-                        .unwrap_or("unknown")
-                )));
-            }
+        if let Some(ref lockfile) = self.lockfile
+            && !lockfile.verify_toolchain(name)?
+        {
+            return Err(Error::other(format!(
+                "Toolchain '{}' version mismatch. Expected {}, run `run toolchain sync`",
+                name,
+                lockfile
+                    .toolchains
+                    .get(name)
+                    .map(|e| e.version.as_str())
+                    .unwrap_or("unknown")
+            )));
         }
         Ok(())
     }
@@ -135,12 +135,12 @@ impl ToolchainManager {
     }
 
     pub fn get_toolchain_path(&self, name: &str) -> Option<PathBuf> {
-        if let Some(ref lockfile) = self.lockfile {
-            if let Some(entry) = lockfile.toolchains.get(name) {
-                let path = self.install_dir.join(name).join(&entry.version);
-                if path.exists() {
-                    return Some(path);
-                }
+        if let Some(ref lockfile) = self.lockfile
+            && let Some(entry) = lockfile.toolchains.get(name)
+        {
+            let path = self.install_dir.join(name).join(&entry.version);
+            if path.exists() {
+                return Some(path);
             }
         }
         None
@@ -218,13 +218,11 @@ fn get_toolchain_version(name: &str) -> Result<String> {
 
 fn parse_version_from_output(output: &str) -> Option<String> {
     for word in output.split_whitespace() {
-        if word.chars().next()?.is_ascii_digit() {
-            if word.contains('.') {
-                return Some(
-                    word.trim_end_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.')
-                        .to_string(),
-                );
-            }
+        if word.chars().next()?.is_ascii_digit() && word.contains('.') {
+            return Some(
+                word.trim_end_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.')
+                    .to_string(),
+            );
         }
     }
     None

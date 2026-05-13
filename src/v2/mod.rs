@@ -1,4 +1,16 @@
 //! Run 2.0
+#![allow(
+    clippy::collapsible_if,
+    clippy::collapsible_match,
+    clippy::field_reassign_with_default,
+    clippy::inherent_to_string,
+    clippy::redundant_locals,
+    clippy::should_implement_trait,
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::unnecessary_sort_by,
+    clippy::unnecessary_to_owned
+)]
 
 pub mod bridge;
 pub mod build;

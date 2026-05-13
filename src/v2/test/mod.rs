@@ -39,10 +39,11 @@ pub fn run_tests(options: TestOptions) -> Result<TestReport> {
     let mut failed = 0;
 
     for (name, test) in &config.tests {
-        if let Some(ref filter) = options.component {
-            if &test.component != filter && name != filter {
-                continue;
-            }
+        if let Some(ref filter) = options.component
+            && &test.component != filter
+            && name != filter
+        {
+            continue;
         }
 
         total += 1;
@@ -79,10 +80,10 @@ pub fn run_tests(options: TestOptions) -> Result<TestReport> {
     if total == 0 {
         let discovered = discover_tests(&config, &options.project_dir, &mut engine)?;
         for (test_name, test_case) in &discovered {
-            if let Some(ref filter) = options.component {
-                if &test_case.component != filter {
-                    continue;
-                }
+            if let Some(ref filter) = options.component
+                && &test_case.component != filter
+            {
+                continue;
             }
             total += 1;
             match run_single_test(
@@ -159,13 +160,13 @@ fn run_single_test(
 
     match engine.call(&handle, &test.function, args) {
         Ok(result) => {
-            if let Some(exit) = test.expect_exit {
-                if result.exit_code != exit {
-                    return Err(Error::other(format!(
-                        "Expected exit {}, got {}",
-                        exit, result.exit_code
-                    )));
-                }
+            if let Some(exit) = test.expect_exit
+                && result.exit_code != exit
+            {
+                return Err(Error::other(format!(
+                    "Expected exit {}, got {}",
+                    exit, result.exit_code
+                )));
             }
             if let Some(ref expected) = test.expect {
                 let expected_val = ComponentValue::parse(expected)?;
@@ -347,7 +348,7 @@ fn discover_tests(
 ) -> Result<Vec<(String, TestCaseConfig)>> {
     let mut discovered = Vec::new();
 
-    for (comp_name, _comp_config) in &config.components {
+    for comp_name in config.components.keys() {
         let wasm_path = match resolve_component_path(config, project_dir, comp_name) {
             Ok(p) if p.exists() => p,
             _ => continue,

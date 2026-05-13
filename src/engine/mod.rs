@@ -41,60 +41,17 @@ use crate::language::{LanguageSpec, canonical_language_id};
 // Compilation cache: hash source code -> reuse compiled binaries
 // ---------------------------------------------------------------------------
 
-static COMPILE_CACHE: LazyLock<Mutex<CompileCache>> =
-    LazyLock::new(|| Mutex::new(CompileCache::new()));
 static SCCACHE_INIT: OnceLock<()> = OnceLock::new();
 static SCCACHE_READY: AtomicBool = AtomicBool::new(false);
 static PERF_COUNTERS: LazyLock<Mutex<HashMap<String, u64>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-struct CompileCache {
-    dir: PathBuf,
-    entries: HashMap<String, PathBuf>,
-}
-
-impl CompileCache {
-    fn new() -> Self {
-        let dir = std::env::temp_dir().join("run-compile-cache");
-        let _ = std::fs::create_dir_all(&dir);
-        Self {
-            dir,
-            entries: HashMap::new(),
-        }
-    }
-
-    fn get(&self, cache_id: &str) -> Option<&PathBuf> {
-        self.entries.get(cache_id).filter(|p| p.exists())
-    }
-
-    fn insert(&mut self, cache_id: String, path: PathBuf) {
-        self.entries.insert(cache_id, path);
-    }
-
-    fn cache_dir(&self) -> &Path {
-        &self.dir
-    }
-}
-
 /// Hash source code for cache lookup.
 pub fn hash_source(source: &str) -> u64 {
-    // Simple FNV-1a hash — fast and good enough for cache keys.
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for byte in source.as_bytes() {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
-}
-
-fn cache_id(namespace: &str, source_hash: u64) -> String {
-    format!("{namespace}-{:016x}", source_hash)
-}
-
-fn cache_path(dir: &Path, namespace: &str, source_hash: u64) -> PathBuf {
-    let suffix = std::env::consts::EXE_SUFFIX;
-    let cached_name = format!("{}{}", cache_id(namespace, source_hash), suffix);
-    dir.join(cached_name)
+    let digest = blake3::hash(source.as_bytes());
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&digest.as_bytes()[..8]);
+    u64::from_le_bytes(bytes)
 }
 
 fn perf_file_path() -> PathBuf {
@@ -133,38 +90,12 @@ fn write_perf_file(map: &HashMap<String, u64>) {
 /// Look up a cached binary for the given language namespace + source hash.
 /// Returns Some(path) if a valid cached binary exists.
 pub fn cache_lookup(namespace: &str, source_hash: u64) -> Option<PathBuf> {
-    let mut cache = COMPILE_CACHE.lock().ok()?;
-    let id = cache_id(namespace, source_hash);
-
-    if let Some(path) = cache.get(&id).cloned() {
-        return Some(path);
-    }
-
-    let disk_path = cache_path(cache.cache_dir(), namespace, source_hash);
-    if disk_path.exists() {
-        cache.insert(id, disk_path.clone());
-        return Some(disk_path);
-    }
-
-    None
+    crate::cache::lookup(namespace, source_hash)
 }
 
 /// Store a compiled binary in the cache. Copies the binary to the cache directory.
 pub fn cache_store(namespace: &str, source_hash: u64, binary: &Path) -> Option<PathBuf> {
-    let mut cache = COMPILE_CACHE.lock().ok()?;
-    let cached_path = cache_path(cache.cache_dir(), namespace, source_hash);
-    if std::fs::copy(binary, &cached_path).is_ok() {
-        // Ensure executable permission on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&cached_path, std::fs::Permissions::from_mode(0o755));
-        }
-        cache.insert(cache_id(namespace, source_hash), cached_path.clone());
-        Some(cached_path)
-    } else {
-        None
-    }
+    crate::cache::store(namespace, source_hash, binary)
 }
 
 /// Execute a cached binary, returning the Output. Returns None if no cache entry.
@@ -277,13 +208,11 @@ pub fn perf_reset() {
     let _ = std::fs::remove_file(perf_file_path());
 }
 
-/// Default execution timeout: 60 seconds.
-/// Override with RUN_TIMEOUT_SECS env var.
+/// Return the configured execution timeout.
+///
+/// Zero means no timeout. `RUN_TIMEOUT_SECS` overrides config and CLI settings.
 pub fn execution_timeout() -> Duration {
-    let secs = std::env::var("RUN_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(60);
+    let secs = crate::runtime::timeout_secs();
     Duration::from_secs(secs)
 }
 
@@ -299,15 +228,10 @@ pub fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<std::pro
                 return child.wait_with_output().map_err(Into::into);
             }
             Ok(None) => {
-                if start.elapsed() > timeout {
+                if timeout.as_secs() > 0 && start.elapsed() > timeout {
                     let _ = child.kill();
                     let _ = child.wait(); // reap
-                    bail!(
-                        "Execution timed out after {:.1}s (limit: {}s). \
-                         Set RUN_TIMEOUT_SECS to increase.",
-                        start.elapsed().as_secs_f64(),
-                        timeout.as_secs()
-                    );
+                    bail!("Execution timed out after {}s", timeout.as_secs());
                 }
                 std::thread::sleep(poll_interval);
             }

@@ -105,20 +105,17 @@ impl ComponentLinker {
         for world in wit.worlds.values() {
             for export in &world.exports {
                 if let crate::v2::wit::WitWorldItem::Interface { name, interface } = export {
-                    match interface {
-                        WitInterfaceRef::Local(local_name) => {
-                            if let Some(iface) = wit.interfaces.get(local_name) {
-                                let export_key = format!("{}/{}", package_id, name);
-                                self.exports.insert(
-                                    export_key,
-                                    ExportEntry {
-                                        component_id: component_id.to_string(),
-                                        interface: iface.clone(),
-                                    },
-                                );
-                            }
+                    if let WitInterfaceRef::Local(local_name) = interface {
+                        if let Some(iface) = wit.interfaces.get(local_name) {
+                            let export_key = format!("{}/{}", package_id, name);
+                            self.exports.insert(
+                                export_key,
+                                ExportEntry {
+                                    component_id: component_id.to_string(),
+                                    interface: iface.clone(),
+                                },
+                            );
                         }
-                        _ => {}
                     }
                 }
             }
@@ -165,11 +162,11 @@ impl ComponentLinker {
                 };
 
                 if let Some(export) = self.exports.get(&export_key) {
-                    if let WitInterfaceRef::Local(local_name) = &import.interface_ref {
-                        if let Some(import_iface) = wit.interfaces.get(local_name) {
-                            self.check_interface_compatibility(&export.interface, import_iface)
-                                .map_err(|e| Error::other(e.to_string()))?;
-                        }
+                    if let WitInterfaceRef::Local(local_name) = &import.interface_ref
+                        && let Some(import_iface) = wit.interfaces.get(local_name)
+                    {
+                        self.check_interface_compatibility(&export.interface, import_iface)
+                            .map_err(|e| Error::other(e.to_string()))?;
                     }
                     if let Some(import_entries) = self.pending_imports.get(component_id) {
                         for import_entry in import_entries {
@@ -382,7 +379,7 @@ impl ComponentLinker {
     pub fn validate_all_links(&self) -> Vec<LinkageError> {
         let errors = Vec::new();
 
-        for ((importer, import_name), _provider) in &self.resolved_links {
+        for (importer, import_name) in self.resolved_links.keys() {
             if let Some(import_entries) = self.pending_imports.get(importer) {
                 for import in import_entries {
                     if &import.import_name == import_name {

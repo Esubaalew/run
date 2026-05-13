@@ -125,10 +125,10 @@ impl FileWatcher {
         for pattern in &self.patterns {
             let paths = glob_files(&self.base_dir, pattern)?;
             for path in paths {
-                if let Ok(metadata) = std::fs::metadata(&path) {
-                    if let Ok(modified) = metadata.modified() {
-                        last_modified.insert(path, modified);
-                    }
+                if let Ok(metadata) = std::fs::metadata(&path)
+                    && let Ok(modified) = metadata.modified()
+                {
+                    last_modified.insert(path, modified);
                 }
             }
         }
@@ -167,10 +167,10 @@ fn check_for_changes(
     for pattern in patterns {
         let paths = glob_files(base_dir, pattern)?;
         for path in paths {
-            if let Ok(metadata) = std::fs::metadata(&path) {
-                if let Ok(modified) = metadata.modified() {
-                    current_files.insert(path, modified);
-                }
+            if let Ok(metadata) = std::fs::metadata(&path)
+                && let Ok(modified) = metadata.modified()
+            {
+                current_files.insert(path, modified);
             }
         }
     }
@@ -256,7 +256,7 @@ fn glob_files(base_dir: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
         Ok(())
     }
 
-    walk_dir(base_dir, base_dir, pattern, &mut results).map_err(|e| Error::Io(e))?;
+    walk_dir(base_dir, base_dir, pattern, &mut results).map_err(Error::Io)?;
 
     Ok(results)
 }

@@ -421,25 +421,22 @@ fn parse_wit_output(wit: &str) -> Result<WitPackage> {
             continue;
         }
 
-        if in_interface {
-            if let Some((_, ref mut iface)) = current_interface {
-                if let Some(func) = parse_function(line) {
-                    iface.functions.insert(func.name.clone(), func);
-                }
-            }
+        if in_interface
+            && let Some((_, ref mut iface)) = current_interface
+            && let Some(func) = parse_function(line)
+        {
+            iface.functions.insert(func.name.clone(), func);
         }
 
-        if in_world {
-            if let Some((_, ref mut world)) = current_world {
-                if line.starts_with("import ") {
-                    if let Some(item) = parse_world_item(line, true) {
-                        world.imports.push(item);
-                    }
-                } else if line.starts_with("export ") {
-                    if let Some(item) = parse_world_item(line, false) {
-                        world.exports.push(item);
-                    }
+        if in_world && let Some((_, ref mut world)) = current_world {
+            if line.starts_with("import ") {
+                if let Some(item) = parse_world_item(line, true) {
+                    world.imports.push(item);
                 }
+            } else if line.starts_with("export ")
+                && let Some(item) = parse_world_item(line, false)
+            {
+                world.exports.push(item);
             }
         }
 
@@ -596,7 +593,7 @@ fn parse_world_item(line: &str, is_import: bool) -> Option<WitWorldItem> {
 
     if line.contains(':') || line.contains('/') {
         let interface_ref = parse_interface_ref(line)?;
-        let name = line.split('/').last().unwrap_or(line).to_string();
+        let name = line.split('/').next_back().unwrap_or(line).to_string();
         Some(WitWorldItem::Interface {
             name,
             interface: interface_ref,

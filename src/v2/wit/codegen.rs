@@ -52,7 +52,7 @@ impl WitCodegen {
                         types::wit_type_to_rust(&field.ty)
                     ));
                 }
-                output.push_str("}");
+                output.push('}');
                 output
             }
             WitType::Variant { cases } => {
@@ -74,7 +74,7 @@ impl WitCodegen {
                         }
                     }
                 }
-                output.push_str("}");
+                output.push('}');
                 output
             }
             WitType::Enum { cases } => {
@@ -85,7 +85,7 @@ impl WitCodegen {
                 for case in cases {
                     output.push_str(&format!("    {},\n", to_pascal_case(case)));
                 }
-                output.push_str("}");
+                output.push('}');
                 output
             }
             WitType::Flags { flags } => {
@@ -103,7 +103,7 @@ impl WitCodegen {
                     ));
                 }
                 output.push_str("    }\n");
-                output.push_str("}");
+                output.push('}');
                 output
             }
             WitType::Resource { name: res_name } => {
@@ -330,7 +330,7 @@ impl WitCodegen {
                         Self::wit_type_to_typescript(&field.ty)
                     ));
                 }
-                output.push_str("}");
+                output.push('}');
                 output
             }
             WitType::Enum { cases } => {
@@ -338,7 +338,7 @@ impl WitCodegen {
                 for case in cases {
                     output.push_str(&format!("  {},\n", to_pascal_case(case)));
                 }
-                output.push_str("}");
+                output.push('}');
                 output
             }
             WitType::Variant { cases } => {
@@ -458,7 +458,7 @@ impl WitCodegen {
         for func in interface.functions.values() {
             output.push_str("    ");
             output.push_str(&Self::generate_go_function_sig(func));
-            output.push_str("\n");
+            output.push('\n');
         }
         output.push_str("}\n");
 
@@ -476,7 +476,7 @@ impl WitCodegen {
                         Self::wit_type_to_go(&field.ty)
                     ));
                 }
-                output.push_str("}");
+                output.push('}');
                 output
             }
             WitType::Enum { cases } => {
@@ -490,7 +490,7 @@ impl WitCodegen {
                         i
                     ));
                 }
-                output.push_str(")");
+                output.push(')');
                 output
             }
             _ => format!("type {} {}", to_pascal_case(name), Self::wit_type_to_go(ty)),
@@ -666,7 +666,7 @@ impl WitCodegen {
 }
 
 fn to_pascal_case(s: &str) -> String {
-    s.split(|c: char| c == '-' || c == '_')
+    s.split(['-', '_'])
         .map(|part| {
             let mut chars = part.chars();
             match chars.next() {

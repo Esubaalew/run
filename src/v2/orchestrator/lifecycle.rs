@@ -137,13 +137,13 @@ impl Orchestrator {
         {
             let components = self.components.read().unwrap();
             for dep_id in &dependencies {
-                if let Some(dep) = components.get(dep_id) {
-                    if dep.status != ComponentStatus::Running {
-                        return Err(Error::LifecycleError {
-                            component: component_id.to_string(),
-                            reason: format!("Dependency '{}' is not running", dep_id),
-                        });
-                    }
+                if let Some(dep) = components.get(dep_id)
+                    && dep.status != ComponentStatus::Running
+                {
+                    return Err(Error::LifecycleError {
+                        component: component_id.to_string(),
+                        reason: format!("Dependency '{}' is not running", dep_id),
+                    });
                 }
             }
         }
@@ -189,13 +189,13 @@ impl Orchestrator {
         {
             let components = self.components.read().unwrap();
             for dep_id in &dependents {
-                if let Some(dep) = components.get(dep_id) {
-                    if dep.status == ComponentStatus::Running {
-                        return Err(Error::LifecycleError {
-                            component: component_id.to_string(),
-                            reason: format!("Dependent '{}' is still running", dep_id),
-                        });
-                    }
+                if let Some(dep) = components.get(dep_id)
+                    && dep.status == ComponentStatus::Running
+                {
+                    return Err(Error::LifecycleError {
+                        component: component_id.to_string(),
+                        reason: format!("Dependent '{}' is still running", dep_id),
+                    });
                 }
             }
         }

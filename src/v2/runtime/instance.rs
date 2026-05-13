@@ -421,10 +421,10 @@ impl ComponentInstance {
             return Ok(func);
         }
 
-        if let Some((iface, func)) = split_function_path(function) {
-            if let Some(resolved) = lookup_interface_func(instance, store, &iface, &func)? {
-                return Ok(resolved);
-            }
+        if let Some((iface, func)) = split_function_path(function)
+            && let Some(resolved) = lookup_interface_func(instance, store, &iface, &func)?
+        {
+            return Ok(resolved);
         }
 
         let mut candidates = std::collections::HashSet::new();
@@ -971,7 +971,7 @@ fn lookup_interface_func(
         Some(idx) => idx,
         None => return Ok(None),
     };
-    Ok(instance.get_func(&mut *store, &func_export))
+    Ok(instance.get_func(&mut *store, func_export))
 }
 
 #[cfg(test)]

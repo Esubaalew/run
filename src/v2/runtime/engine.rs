@@ -440,10 +440,10 @@ impl RuntimeEngine {
 
     pub fn terminate(&self, handle: &InstanceHandle) -> Result<()> {
         let mut instances = self.instances.lock().unwrap();
-        if let Some(instance) = instances.remove(&handle.id) {
-            if let Ok(mut mem_guard) = Arc::try_unwrap(instance) {
-                self.memory_pool.release(mem_guard.take_memory());
-            }
+        if let Some(instance) = instances.remove(&handle.id)
+            && let Ok(mut mem_guard) = Arc::try_unwrap(instance)
+        {
+            self.memory_pool.release(mem_guard.take_memory());
         }
         Ok(())
     }
@@ -567,10 +567,9 @@ impl RuntimeEngine {
                 .components
                 .get(&provider_id)
                 .and_then(|c| c.wit.as_ref())
+                && let Some(interface) = provider_wit.interfaces.get(&interface_name)
             {
-                if let Some(interface) = provider_wit.interfaces.get(&interface_name) {
-                    functions.extend(interface.functions.keys().cloned());
-                }
+                functions.extend(interface.functions.keys().cloned());
             }
 
             if functions.is_empty() {
@@ -602,13 +601,11 @@ impl RuntimeEngine {
                         "Unrestricted capability is not allowed by policy".to_string(),
                     ));
                 }
-                Capability::NetConnect { host, .. } => {
-                    if !policy.is_host_allowed(host) {
-                        return Err(Error::InvalidCapability(format!(
-                            "Network access to '{}' is blocked by policy",
-                            host
-                        )));
-                    }
+                Capability::NetConnect { host, .. } if !policy.is_host_allowed(host) => {
+                    return Err(Error::InvalidCapability(format!(
+                        "Network access to '{}' is blocked by policy",
+                        host
+                    )));
                 }
                 _ => {}
             }

@@ -22,7 +22,7 @@ impl WitParser {
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             let file_path = entry.path();
-            if file_path.extension().map_or(false, |e| e == "wit") {
+            if file_path.extension().is_some_and(|e| e == "wit") {
                 let content = std::fs::read_to_string(&file_path)?;
                 combined.push_str(&content);
                 combined.push('\n');

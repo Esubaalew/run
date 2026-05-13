@@ -12,7 +12,7 @@ use rustyline::highlight::Highlighter;
 use rustyline::hint::Hinter;
 use rustyline::history::DefaultHistory;
 use rustyline::validate::Validator;
-use rustyline::{Editor, Helper};
+use rustyline::{Config, Editor, Helper};
 
 use crate::engine::{
     ExecutionOutcome, ExecutionPayload, LanguageRegistry, LanguageSession, build_install_command,
@@ -21,7 +21,6 @@ use crate::highlight;
 use crate::language::LanguageSpec;
 use crate::output;
 
-const HISTORY_FILE: &str = ".run_history";
 const BOOKMARKS_FILE: &str = ".run_bookmarks";
 const REPL_CONFIG_FILE: &str = ".run_repl_config";
 const MAX_DIR_STACK: usize = 20;
@@ -699,10 +698,17 @@ pub fn run_repl(
     detect_enabled: bool,
 ) -> Result<i32> {
     let helper = ReplHelper::new(initial_language.canonical_id().to_string());
-    let mut editor = Editor::<ReplHelper, DefaultHistory>::new()?;
+    let config = Config::builder()
+        .history_ignore_space(true)
+        .history_ignore_dups(true)?
+        .build();
+    let mut editor = Editor::<ReplHelper, DefaultHistory>::with_config(config)?;
     editor.set_helper(Some(helper));
 
-    if let Some(path) = history_path() {
+    if let Some(path) = history_path(initial_language.canonical_id()) {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
         let _ = editor.load_history(&path);
     }
 
@@ -853,7 +859,10 @@ pub fn run_repl(
         }
     }
 
-    if let Some(path) = history_path() {
+    if let Some(path) = history_path(state.current_language.canonical_id()) {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
         let _ = editor.save_history(&path);
     }
 
@@ -1536,11 +1545,19 @@ impl ReplState {
                 return Ok(false);
             }
             "reset" => {
-                self.reset_current_session();
-                println!(
-                    "session for '{}' reset",
-                    self.current_language.canonical_id()
-                );
+                if parts
+                    .next()
+                    .is_some_and(|arg| arg.eq_ignore_ascii_case("all"))
+                {
+                    self.reset_all_sessions();
+                    println!("all sessions reset");
+                } else {
+                    self.reset_current_session();
+                    println!(
+                        "session for '{}' reset",
+                        self.current_language.canonical_id()
+                    );
+                }
                 return Ok(false);
             }
             "cd" => {
@@ -2206,6 +2223,22 @@ impl ReplState {
         if let Some(mut session) = self.sessions.remove(&key) {
             let _ = session.shutdown();
         }
+        self.defined_names.clear();
+        self.history_entries.clear();
+        self.macros.clear();
+        self.paste_buffer = None;
+        self.last_stdout = None;
+    }
+
+    fn reset_all_sessions(&mut self) {
+        for (_, mut session) in self.sessions.drain() {
+            let _ = session.shutdown();
+        }
+        self.defined_names.clear();
+        self.history_entries.clear();
+        self.macros.clear();
+        self.paste_buffer = None;
+        self.last_stdout = None;
     }
 
     fn execute_snippet(&mut self, code: &str) -> Result<()> {
@@ -2243,50 +2276,63 @@ impl ReplState {
 
     fn execute_payload(&mut self, payload: ExecutionPayload) -> Result<()> {
         let language = self.current_language.clone();
-        let outcome = match payload {
-            ExecutionPayload::Inline { code, .. } => {
-                if self.engine_supports_sessions(&language)? {
-                    self.eval_in_session(&language, &code)?
-                } else {
-                    let engine = self
-                        .registry
-                        .resolve(&language)
-                        .context("language engine not found")?;
-                    engine.execute(&ExecutionPayload::Inline {
-                        code,
-                        args: Vec::new(),
-                    })?
+        let outcome_result = (|| -> Result<ExecutionOutcome> {
+            Ok(match payload {
+                ExecutionPayload::Inline { code, .. } => {
+                    if self.engine_supports_sessions(&language)? {
+                        self.eval_in_session(&language, &code)?
+                    } else {
+                        let engine = self
+                            .registry
+                            .resolve(&language)
+                            .context("language engine not found")?;
+                        engine.execute(&ExecutionPayload::Inline {
+                            code,
+                            args: Vec::new(),
+                        })?
+                    }
                 }
-            }
-            ExecutionPayload::File { ref path, .. } => {
-                // Read the file and feed it through the session so variables persist
-                if self.engine_supports_sessions(&language)? {
-                    let code = std::fs::read_to_string(path)
-                        .with_context(|| format!("failed to read file: {}", path.display()))?;
-                    println!("\x1b[2m[loaded {}]\x1b[0m", path.display());
-                    self.eval_in_session(&language, &code)?
-                } else {
-                    let engine = self
-                        .registry
-                        .resolve(&language)
-                        .context("language engine not found")?;
-                    engine.execute(&payload)?
+                ExecutionPayload::File { ref path, .. } => {
+                    // Read the file and feed it through the session so variables persist
+                    if self.engine_supports_sessions(&language)? {
+                        let code = std::fs::read_to_string(path)
+                            .with_context(|| format!("failed to read file: {}", path.display()))?;
+                        println!("\x1b[2m[loaded {}]\x1b[0m", path.display());
+                        self.eval_in_session(&language, &code)?
+                    } else {
+                        let engine = self
+                            .registry
+                            .resolve(&language)
+                            .context("language engine not found")?;
+                        engine.execute(&payload)?
+                    }
                 }
-            }
-            ExecutionPayload::Stdin { code, .. } => {
-                if self.engine_supports_sessions(&language)? {
-                    self.eval_in_session(&language, &code)?
-                } else {
-                    let engine = self
-                        .registry
-                        .resolve(&language)
-                        .context("language engine not found")?;
-                    engine.execute(&ExecutionPayload::Stdin {
-                        code,
-                        args: Vec::new(),
-                    })?
+                ExecutionPayload::Stdin { code, .. } => {
+                    if self.engine_supports_sessions(&language)? {
+                        self.eval_in_session(&language, &code)?
+                    } else {
+                        let engine = self
+                            .registry
+                            .resolve(&language)
+                            .context("language engine not found")?;
+                        engine.execute(&ExecutionPayload::Stdin {
+                            code,
+                            args: Vec::new(),
+                        })?
+                    }
                 }
+            })
+        })();
+        let outcome = match outcome_result {
+            Ok(outcome) => outcome,
+            Err(err) if err.to_string().contains("Execution timed out") => {
+                println!(
+                    "\x1b[31m[run]\x1b[0m Execution timed out after {}s",
+                    crate::runtime::timeout_secs()
+                );
+                return Ok(());
             }
+            Err(err) => return Err(err),
         };
         render_outcome(&outcome, self.xmode);
         self.last_stdout = Some(outcome.stdout.clone());
@@ -2482,12 +2528,17 @@ impl ReplState {
     }
 
     fn bench_code(&mut self, code: &str, iterations: u32) -> Result<()> {
+        if iterations == 0 {
+            println!("\x1b[31m[run]\x1b[0m :bench requires N >= 1");
+            return Ok(());
+        }
+
         let language = self.current_language.clone();
 
         // Warmup
         let warmup = self.eval_in_session(&language, code)?;
         if !warmup.success() {
-            println!("\x1b[31mError:\x1b[0m Code failed during warmup");
+            println!("\x1b[31m[run]\x1b[0m Code failed during warmup");
             if !warmup.stderr.is_empty() {
                 print!("{}", warmup.stderr);
             }
@@ -2843,15 +2894,11 @@ fn parse_history_range(s: &str, len: usize) -> (usize, usize) {
     (len.saturating_sub(25), len)
 }
 
-fn history_path() -> Option<PathBuf> {
-    if let Ok(home) = std::env::var("HOME") {
-        return Some(Path::new(&home).join(HISTORY_FILE));
-    }
-    #[cfg(windows)]
-    if let Ok(home) = std::env::var("USERPROFILE") {
-        return Some(Path::new(&home).join(HISTORY_FILE));
-    }
-    None
+fn history_path(language_id: &str) -> Option<PathBuf> {
+    dirs::data_local_dir().map(|dir| {
+        dir.join("run-kit")
+            .join(format!("history_{language_id}.txt"))
+    })
 }
 
 fn bookmarks_path() -> Option<PathBuf> {

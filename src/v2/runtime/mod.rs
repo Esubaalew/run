@@ -340,7 +340,7 @@ impl ComponentValue {
                 "enum" => Ok(ComponentValue::Enum(value.to_string())),
                 "flags" => {
                     let parts: Vec<String> = value
-                        .split(|c| c == '|' || c == ',')
+                        .split(['|', ','])
                         .map(|s| s.trim().to_string())
                         .filter(|s| !s.is_empty())
                         .collect();

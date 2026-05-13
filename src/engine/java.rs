@@ -225,15 +225,16 @@ impl LanguageEngine for JavaEngine {
             let class_file = cache_dir.join("Main.class");
             if class_file.exists() {
                 let start = Instant::now();
-                if let Ok(output) = self.run(&cache_dir, "Main", args) {
-                    return Ok(ExecutionOutcome {
-                        language: self.id().to_string(),
-                        exit_code: output.status.code(),
-                        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                        duration: start.elapsed(),
-                    });
-                }
+                let output = self
+                    .run(&cache_dir, "Main", args)
+                    .with_context(|| "failed to execute cached Java artifact")?;
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: output.status.code(),
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
             }
         }
 

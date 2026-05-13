@@ -157,15 +157,16 @@ impl LanguageEngine for KotlinEngine {
                 .join(format!("kotlin-{:016x}.jar", src_hash));
             if cached_jar.exists() {
                 let start = Instant::now();
-                if let Ok(output) = self.run(&cached_jar, args) {
-                    return Ok(ExecutionOutcome {
-                        language: self.id().to_string(),
-                        exit_code: output.status.code(),
-                        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                        duration: start.elapsed(),
-                    });
-                }
+                let output = self
+                    .run(&cached_jar, args)
+                    .with_context(|| "failed to execute cached Kotlin artifact")?;
+                return Ok(ExecutionOutcome {
+                    language: self.id().to_string(),
+                    exit_code: output.status.code(),
+                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                    duration: start.elapsed(),
+                });
             }
         }
 
