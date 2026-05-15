@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.9.0] - 2026-05-14
+
+### Changed
+
+- Bumped the crate for the full deep-strike release prep pass.
+- Added workflow command summaries to `run --help` so `doctor`, `cache`, `fmt`, `snippet`, `watch`, and `share` are discoverable from Clap help output.
+
+### Fixed
+
+- Rebuilt the global C++ precompiled-header cache per compiler identity, preventing stale `.gch` files from breaking C++ stdin, inline, and REPL execution after Clang/Xcode upgrades.
+
 ## [0.8.0] - 2026-05-13
 
 ### Added
@@ -198,7 +209,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/esubaalew/run/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/esubaalew/run/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/esubaalew/run/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/esubaalew/run/compare/v0.6.0...v0.6.1

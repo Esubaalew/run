@@ -52,12 +52,14 @@
 
 ---
 
-## What's New in 0.8
+## What's New in 0.9
 
 - Toolchain-aware blake3 build cache under the platform cache directory with `run cache --stats` and `run cache --clear`.
 - New workflow commands: `run doctor`, `run fmt <file>`, `run snippet <lang> <name>`, `run watch <file>`, and `run share <file>`.
 - Scriptable execution via `--json` and predictable timeout behavior via `--timeout <seconds>` with exit code 124.
 - Per-language REPL history, safer reset behavior, and hardened child-process shutdown.
+- C++ precompiled-header cache invalidation now tracks the exact compiler identity, so Clang/Xcode upgrades no longer poison inline, stdin, or REPL runs.
+- `run --help` now lists all workflow subcommands directly.
 
 ---
 

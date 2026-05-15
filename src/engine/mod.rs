@@ -268,12 +268,43 @@ pub use swift::SwiftEngine;
 pub use typescript::TypeScriptEngine;
 pub use zig::ZigEngine;
 
+/// Stateful interactive execution context for one language engine.
 pub trait LanguageSession {
     fn language_id(&self) -> &str;
     fn eval(&mut self, code: &str) -> Result<ExecutionOutcome>;
     fn shutdown(&mut self) -> Result<()>;
 }
 
+/// Runtime adapter for a supported programming language.
+///
+/// Implementors validate a real local toolchain, execute one-shot payloads,
+/// and optionally create a persistent [`LanguageSession`] for REPL use.
+///
+/// # Example
+///
+/// ```ignore
+/// use anyhow::Result;
+/// use run::engine::{ExecutionOutcome, ExecutionPayload, LanguageEngine};
+///
+/// struct ToyEngine;
+///
+/// impl LanguageEngine for ToyEngine {
+///     fn id(&self) -> &'static str { "toy" }
+///     fn display_name(&self) -> &'static str { "Toy" }
+///
+///     fn validate(&self) -> Result<()> {
+///         // Check that the interpreter/compiler exists and is runnable.
+///         Ok(())
+///     }
+///
+///     fn execute(&self, payload: &ExecutionPayload) -> Result<ExecutionOutcome> {
+///         // Materialize payload input, spawn the toolchain, capture stdout and stderr,
+///         // and return the process exit code and elapsed time.
+///         # let _ = payload;
+///         # unimplemented!()
+///     }
+/// }
+/// ```
 pub trait LanguageEngine {
     fn id(&self) -> &'static str;
     fn display_name(&self) -> &'static str {

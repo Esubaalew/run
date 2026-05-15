@@ -11,6 +11,18 @@ fn python_available() -> bool {
 }
 
 #[test]
+fn help_lists_workflow_subcommands() {
+    run_binary()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Workflow commands:"))
+        .stdout(predicate::str::contains("run doctor"))
+        .stdout(predicate::str::contains("run cache --stats"))
+        .stdout(predicate::str::contains("run share <file>"));
+}
+
+#[test]
 fn snippet_lists_and_emits_template() {
     run_binary()
         .args(["snippet", "python", "--list"])

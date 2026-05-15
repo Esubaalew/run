@@ -1111,7 +1111,9 @@ fn ensure_global_cpp_pch(compiler: &Path) -> Option<PathBuf> {
     let lock = PCH_BUILD_LOCK.get_or_init(|| Mutex::new(()));
     let _guard = lock.lock().ok()?;
 
-    let cache_dir = std::env::temp_dir().join("run-compile-cache");
+    let cache_dir = std::env::temp_dir()
+        .join("run-compile-cache")
+        .join(cpp_pch_cache_key(compiler));
     std::fs::create_dir_all(&cache_dir).ok()?;
     let header = cache_dir.join("run_cpp_pch.hpp");
     let gch = cache_dir.join("run_cpp_pch.hpp.gch");
@@ -1159,6 +1161,19 @@ fn ensure_global_cpp_pch(compiler: &Path) -> Option<PathBuf> {
     Some(header)
 }
 
+fn cpp_pch_cache_key(compiler: &Path) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"run-kit/cpp-pch/v2");
+    hasher.update(compiler.to_string_lossy().as_bytes());
+
+    if let Ok(output) = Command::new(compiler).arg("--version").output() {
+        hasher.update(&output.stdout);
+        hasher.update(&output.stderr);
+    }
+
+    hasher.finalize().to_hex()[..16].to_string()
+}
+
 fn cpp_needs_recompile(source: &Path, object: &Path, depfile: &Path) -> bool {
     if !object.exists() {
         return true;
@@ -1194,4 +1209,26 @@ fn cpp_needs_recompile(source: &Path, object: &Path, depfile: &Path) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cpp_pch_cache_key;
+    use std::path::Path;
+
+    #[test]
+    fn pch_cache_key_is_stable_for_same_compiler_path() {
+        assert_eq!(
+            cpp_pch_cache_key(Path::new("/missing/c++")),
+            cpp_pch_cache_key(Path::new("/missing/c++"))
+        );
+    }
+
+    #[test]
+    fn pch_cache_key_changes_with_compiler_path() {
+        assert_ne!(
+            cpp_pch_cache_key(Path::new("/missing/c++")),
+            cpp_pch_cache_key(Path::new("/other/c++"))
+        );
+    }
 }

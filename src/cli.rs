@@ -296,6 +296,7 @@ pub fn parse() -> Result<Command> {
     name = "run",
     about = "Universal multi-language runner and REPL",
     long_about = "Universal multi-language runner and REPL. Run 2.0 is available via 'run v2' and is experimental.",
+    after_help = SUBCOMMAND_HELP,
     disable_help_subcommand = true,
     disable_version_flag = true
 )]
@@ -544,3 +545,16 @@ const KNOWN_CODE_EXTENSIONS: &[&str] = &[
     "bash", "zsh", "ps1", "php", "java", "kt", "swift", "scala", "clj", "fs", "cs", "c", "cc",
     "cpp", "h", "hpp", "pl", "jl", "ex", "exs", "ml", "hs",
 ];
+
+const SUBCOMMAND_HELP: &str = "\
+Workflow commands:
+  run doctor                 Diagnose installed language toolchains
+  run cache --stats          Show persistent build cache usage
+  run cache --clear          Clear all persistent build cache entries
+  run cache --clear-lang L   Clear cache entries for one language
+  run fmt <file>             Format a file in place
+  run snippet <lang> <name>  Print a curated offline snippet template
+  run snippet <lang> --list  List templates for a language
+  run watch <file>           Re-run a file when it changes
+  run share <file> [--port N] Serve a local highlighted file/output page
+  run v2 ...                 Use the experimental WASI component runtime";
