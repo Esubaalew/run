@@ -134,3 +134,12 @@ pub fn known_canonical_languages() -> Vec<&'static str> {
     unique.dedup();
     unique
 }
+
+pub fn known_language_aliases() -> Vec<(&'static str, &'static str)> {
+    let mut pairs: Vec<_> = ALIASES
+        .iter()
+        .map(|(alias, lang)| (*alias, *lang))
+        .collect();
+    pairs.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    pairs
+}

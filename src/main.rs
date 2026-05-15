@@ -371,6 +371,7 @@ fn main() -> Result<()> {
         run::cli::Command::ShowVersion
             | run::cli::Command::PerfReport
             | run::cli::Command::PerfReset
+            | run::cli::Command::Alias { .. }
             | run::cli::Command::Cache { .. }
     ) {
         let config = run::config::RunConfig::discover();

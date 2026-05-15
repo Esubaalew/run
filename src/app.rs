@@ -6,7 +6,7 @@ use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 
-use crate::cli::{CacheAction, Command, ExecutionSpec, InputSource};
+use crate::cli::{AliasAction, CacheAction, Command, ExecutionSpec, InputSource};
 use crate::engine::{
     ExecutionPayload, LanguageRegistry, build_install_command, default_language,
     detect_language_for_source, ensure_known_language, perf_reset, perf_snapshot,
@@ -32,6 +32,7 @@ pub fn run(command: Command) -> Result<i32> {
             Ok(0)
         }
         Command::Cache { action } => cache_command(action),
+        Command::Alias { action } => alias_command(action),
         other => run_with_registry(other),
     }
 }
@@ -79,6 +80,7 @@ fn run_with_registry(command: Command) -> Result<i32> {
         } => snippet_command(language, name, list),
         Command::Doctor => doctor(&registry),
         Command::Cache { .. } => unreachable!("handled before registry bootstrap"),
+        Command::Alias { .. } => unreachable!("handled before registry bootstrap"),
         Command::Share { path, port } => share_file(&path, port, &registry),
         Command::PerfReport | Command::PerfReset => {
             unreachable!("handled before registry bootstrap")
@@ -401,6 +403,19 @@ fn snippet_command(language: LanguageSpec, name: Option<String>, list: bool) -> 
             names.join(", ")
         );
         Ok(2)
+    }
+}
+
+fn alias_command(action: AliasAction) -> Result<i32> {
+    match action {
+        AliasAction::List => {
+            println!("{:<16} Language", "Alias");
+            println!("────────────────────────");
+            for (alias, language) in crate::language::known_language_aliases() {
+                println!("{alias:<16} {language}");
+            }
+            Ok(0)
+        }
     }
 }
 

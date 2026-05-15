@@ -19,7 +19,27 @@ fn help_lists_workflow_subcommands() {
         .stdout(predicate::str::contains("Workflow commands:"))
         .stdout(predicate::str::contains("run doctor"))
         .stdout(predicate::str::contains("run cache --stats"))
+        .stdout(predicate::str::contains("run alias list"))
         .stdout(predicate::str::contains("run share <file>"));
+}
+
+#[test]
+fn alias_command_lists_builtin_aliases_and_rejects_mutation() {
+    run_binary()
+        .args(["alias", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Alias"))
+        .stdout(predicate::str::contains("py"))
+        .stdout(predicate::str::contains("python"));
+
+    run_binary()
+        .args(["alias", "add", "p", "python"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "custom language aliases are not supported yet",
+        ));
 }
 
 #[test]

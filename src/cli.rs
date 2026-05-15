@@ -62,6 +62,9 @@ pub enum Command {
     Cache {
         action: CacheAction,
     },
+    Alias {
+        action: AliasAction,
+    },
     Share {
         path: PathBuf,
         port: Option<u16>,
@@ -75,6 +78,11 @@ pub enum CacheAction {
     Stats,
     Clear,
     ClearLang(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AliasAction {
+    List,
 }
 
 pub fn parse() -> Result<Command> {
@@ -463,6 +471,25 @@ fn parse_subcommand(args: &mut Vec<String>, lang: Option<&str>) -> Result<Option
             ensure!(args.is_empty(), "unexpected arguments after cache command");
             Ok(Some(Command::Cache { action }))
         }
+        "alias" | "aliases" => {
+            args.remove(0);
+            let action = match args.first().map(String::as_str) {
+                None | Some("list") | Some("--list") => {
+                    if !args.is_empty() {
+                        args.remove(0);
+                    }
+                    AliasAction::List
+                }
+                Some("add") | Some("set") | Some("remove") | Some("rm") | Some("delete") => {
+                    anyhow::bail!(
+                        "custom language aliases are not supported yet; use `run alias list` to view built-in aliases"
+                    )
+                }
+                Some(other) => anyhow::bail!("unknown alias action '{other}'"),
+            };
+            ensure!(args.is_empty(), "unexpected arguments after alias command");
+            Ok(Some(Command::Alias { action }))
+        }
         "watch" => {
             args.remove(0);
             ensure!(!args.is_empty(), "watch requires a file path");
@@ -552,6 +579,7 @@ Workflow commands:
   run cache --stats          Show persistent build cache usage
   run cache --clear          Clear all persistent build cache entries
   run cache --clear-lang L   Clear cache entries for one language
+  run alias list             List built-in language aliases
   run fmt <file>             Format a file in place
   run snippet <lang> <name>  Print a curated offline snippet template
   run snippet <lang> --list  List templates for a language

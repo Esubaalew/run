@@ -16,6 +16,7 @@ Nothing yet.
 ### Fixed
 
 - Rebuilt the global C++ precompiled-header cache per compiler identity, preventing stale `.gch` files from breaking C++ stdin, inline, and REPL execution after Clang/Xcode upgrades.
+- Added `run alias list` so alias discovery is handled by the CLI instead of being misrouted as Python source.
 
 ## [0.8.0] - 2026-05-13
 
