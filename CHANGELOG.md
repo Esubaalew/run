@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.9.1] - 2026-05-15
+
+### Fixed
+
+- Added `run alias list` so alias discovery is handled by the CLI instead of being misrouted as Python source.
+
 ## [0.9.0] - 2026-05-14
 
 ### Changed
@@ -16,7 +22,6 @@ Nothing yet.
 ### Fixed
 
 - Rebuilt the global C++ precompiled-header cache per compiler identity, preventing stale `.gch` files from breaking C++ stdin, inline, and REPL execution after Clang/Xcode upgrades.
-- Added `run alias list` so alias discovery is handled by the CLI instead of being misrouted as Python source.
 
 ## [0.8.0] - 2026-05-13
 
@@ -210,7 +215,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/esubaalew/run/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/esubaalew/run/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/esubaalew/run/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/esubaalew/run/compare/v0.6.1...v0.7.0
