@@ -26,11 +26,11 @@ fn help_lists_workflow_subcommands() {
 #[test]
 fn alias_command_lists_and_supports_custom_aliases() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let config_root = temp.path().join("config");
-    std::fs::create_dir_all(&config_root).expect("mkdir");
-    unsafe { std::env::set_var("XDG_CONFIG_HOME", &config_root) };
+    let aliases_file = temp.path().join("aliases.toml");
+    let aliases_file = aliases_file.to_str().expect("utf8 path");
 
     run_binary()
+        .env("RUN_ALIASES_FILE", aliases_file)
         .args(["alias", "list"])
         .assert()
         .success()
@@ -39,12 +39,14 @@ fn alias_command_lists_and_supports_custom_aliases() {
         .stdout(predicate::str::contains("python"));
 
     run_binary()
+        .env("RUN_ALIASES_FILE", aliases_file)
         .args(["alias", "add", "p", "python"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Added alias 'p'"));
 
     run_binary()
+        .env("RUN_ALIASES_FILE", aliases_file)
         .args(["alias", "list"])
         .assert()
         .success()
@@ -52,24 +54,25 @@ fn alias_command_lists_and_supports_custom_aliases() {
         .stdout(predicate::str::contains("p"));
 
     run_binary()
+        .env("RUN_ALIASES_FILE", aliases_file)
         .args(["p", "-c", "print('alias-ok')"])
         .assert()
         .success()
         .stdout(predicate::str::contains("alias-ok"));
 
     run_binary()
+        .env("RUN_ALIASES_FILE", aliases_file)
         .args(["alias", "remove", "p"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Removed alias 'p'"));
 
     run_binary()
+        .env("RUN_ALIASES_FILE", aliases_file)
         .args(["alias", "add", "py", "python"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("reserved"));
-
-    unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
 }
 
 #[test]

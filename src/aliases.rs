@@ -14,11 +14,19 @@ struct AliasFile {
 }
 
 /// Path to the user alias file (`~/.config/run-kit/aliases.toml` on most platforms).
+///
+/// Override with `RUN_ALIASES_FILE` (full path) or `XDG_CONFIG_HOME` (base config dir).
 pub fn config_path() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("run-kit")
-        .join("aliases.toml")
+    if let Ok(path) = std::env::var("RUN_ALIASES_FILE") {
+        return PathBuf::from(path);
+    }
+
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(dirs::config_dir)
+        .unwrap_or_else(std::env::temp_dir);
+
+    base.join("run-kit").join("aliases.toml")
 }
 
 pub fn normalize_token(token: &str) -> String {
@@ -112,14 +120,17 @@ pub fn list_custom_aliases() -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn with_temp_config<F: FnOnce(&PathBuf)>(f: F) {
+        let _guard = TEST_LOCK.lock().expect("alias test lock");
         let temp = tempfile::tempdir().expect("tempdir");
-        let config_root = temp.path().join("config");
-        std::fs::create_dir_all(&config_root).expect("mkdir");
-        unsafe { std::env::set_var("XDG_CONFIG_HOME", &config_root) };
-        f(&config_path());
-        unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
+        let aliases_file = temp.path().join("aliases.toml");
+        unsafe { std::env::set_var("RUN_ALIASES_FILE", &aliases_file) };
+        f(&aliases_file);
+        unsafe { std::env::remove_var("RUN_ALIASES_FILE") };
     }
 
     #[test]
