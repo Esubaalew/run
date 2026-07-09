@@ -6,6 +6,24 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.10.0] - 2026-07-09
+
+### Added
+
+- Custom language aliases via `run alias add`, `run alias set`, and `run alias remove`, persisted in `~/.config/run-kit/aliases.toml`.
+- In-repo documentation lives in [esubaalew/run-docs](https://github.com/esubaalew/run-docs) (published at [run.esubalew.et/docs](https://run.esubalew.et/docs/overview)).
+
+### Changed
+
+- `run fmt` and `run share` now detect all 25 supported languages from file extensions.
+- Run 2.0 default WASI target aligned to `wasm32-wasip1` across build, deploy, and registry metadata.
+- CI runs separate check and test jobs with `--features v2`.
+
+### Fixed
+
+- Unified extension-to-language mapping for workflow commands (previously truncated to ~10 extensions).
+- `run.lock.toml` no longer ships misleading placeholder SHA256 hashes; use `run v2 toolchain sync` to populate.
+
 ## [0.9.1] - 2026-05-15
 
 ### Fixed
@@ -215,7 +233,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/esubaalew/run/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/esubaalew/run/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/esubaalew/run/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/esubaalew/run/compare/v0.7.0...v0.8.0

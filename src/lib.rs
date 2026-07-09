@@ -1,3 +1,4 @@
+pub mod aliases;
 pub mod app;
 pub mod cache;
 pub mod cli;

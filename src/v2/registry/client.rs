@@ -462,7 +462,7 @@ fn convert_package_response(data: PackageResponse) -> Result<ComponentPackage> {
         wit_url: data.wit_url,
         dependencies,
         targets: if data.targets.is_empty() {
-            vec!["wasm32-wasip2".to_string()]
+            vec!["wasm32-wasip1".to_string()]
         } else {
             data.targets
         },

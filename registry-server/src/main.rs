@@ -648,7 +648,7 @@ async fn publish_package(
     let size = data.len() as u64;
     let published_at = chrono::Utc::now().timestamp() as u64;
 
-    let targets = targets.unwrap_or_else(|| vec!["wasm32-wasip2".to_string()]);
+    let targets = targets.unwrap_or_else(|| vec!["wasm32-wasip1".to_string()]);
     let deps = dependencies.unwrap_or_default();
     let deps_json = serde_json::to_string(&deps).unwrap_or_else(|_| "[]".to_string());
     let targets_json = serde_json::to_string(&targets).unwrap_or_else(|_| "[]".to_string());
@@ -742,7 +742,7 @@ async fn search_packages(
             .unwrap_or_default();
         let targets = targets_json
             .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
-            .unwrap_or_else(|| vec!["wasm32-wasip2".to_string()]);
+            .unwrap_or_else(|| vec!["wasm32-wasip1".to_string()]);
 
         let download_url = build_download_url(&state.base_url, &name, &version);
 
@@ -994,7 +994,7 @@ async fn fetch_package_meta(state: &RegistryState, name: &str, version: &str) ->
         .unwrap_or_default();
     let targets = targets_json
         .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
-        .unwrap_or_else(|| vec!["wasm32-wasip2".to_string()]);
+        .unwrap_or_else(|| vec!["wasm32-wasip1".to_string()]);
 
     let download_url = build_download_url(&state.base_url, &name, &version);
 

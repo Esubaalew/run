@@ -230,7 +230,7 @@ async fn publish_registry(
             download_url: String::new(),
             wit_url: None,
             dependencies,
-            targets: vec!["wasm32-wasip1".to_string()],
+            targets: vec![config.build.target.clone()],
             license: config.project.license.clone(),
             repository: config.project.repository.clone(),
             size: bytes.len(),

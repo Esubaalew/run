@@ -24,7 +24,12 @@ fn help_lists_workflow_subcommands() {
 }
 
 #[test]
-fn alias_command_lists_builtin_aliases_and_rejects_mutation() {
+fn alias_command_lists_and_supports_custom_aliases() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let config_root = temp.path().join("config");
+    std::fs::create_dir_all(&config_root).expect("mkdir");
+    unsafe { std::env::set_var("XDG_CONFIG_HOME", &config_root) };
+
     run_binary()
         .args(["alias", "list"])
         .assert()
@@ -36,10 +41,35 @@ fn alias_command_lists_builtin_aliases_and_rejects_mutation() {
     run_binary()
         .args(["alias", "add", "p", "python"])
         .assert()
+        .success()
+        .stdout(predicate::str::contains("Added alias 'p'"));
+
+    run_binary()
+        .args(["alias", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Custom aliases"))
+        .stdout(predicate::str::contains("p"));
+
+    run_binary()
+        .args(["p", "-c", "print('alias-ok')"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("alias-ok"));
+
+    run_binary()
+        .args(["alias", "remove", "p"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Removed alias 'p'"));
+
+    run_binary()
+        .args(["alias", "add", "py", "python"])
+        .assert()
         .failure()
-        .stderr(predicate::str::contains(
-            "custom language aliases are not supported yet",
-        ));
+        .stderr(predicate::str::contains("reserved"));
+
+    unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
 }
 
 #[test]
@@ -79,6 +109,19 @@ fn fmt_unsupported_file_exits_two() {
         .args(["fmt", file.path().to_str().expect("utf8 path")])
         .assert()
         .code(2)
+        .stderr(predicate::str::contains("No formatter available"));
+}
+
+#[test]
+fn fmt_recognizes_kotlin_extension() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("main.kt");
+    std::fs::write(&path, "fun main() {}").expect("write kotlin file");
+    run_binary()
+        .args(["fmt", path.to_str().expect("utf8 path")])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("kotlin"))
         .stderr(predicate::str::contains("No formatter available"));
 }
 

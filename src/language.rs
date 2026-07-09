@@ -114,18 +114,30 @@ static ALIASES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
 });
 
 pub fn canonical_language_id(token: &str) -> String {
-    language_alias_lookup(token)
-        .unwrap_or_else(|| token.trim())
-        .to_ascii_lowercase()
+    resolve_language_alias(token)
+        .unwrap_or_else(|| token.trim().to_ascii_lowercase())
 }
 
-pub fn language_alias_lookup(token: &str) -> Option<&'static str> {
+/// Resolve a token to a canonical language id using custom then built-in aliases.
+pub fn resolve_language_alias(token: &str) -> Option<String> {
+    if let Some(lang) = crate::aliases::custom_alias_lookup(token) {
+        return Some(lang);
+    }
+    builtin_alias_lookup(token).map(str::to_string)
+}
+
+pub fn builtin_alias_lookup(token: &str) -> Option<&'static str> {
     let normalized = token.trim().to_ascii_lowercase();
     ALIASES.get(normalized.as_str()).copied()
 }
 
+/// Backward-compatible built-in alias lookup.
+pub fn language_alias_lookup(token: &str) -> Option<&'static str> {
+    builtin_alias_lookup(token)
+}
+
 pub fn is_language_token(token: &str) -> bool {
-    language_alias_lookup(token).is_some()
+    resolve_language_alias(token).is_some()
 }
 
 pub fn known_canonical_languages() -> Vec<&'static str> {
@@ -142,4 +154,8 @@ pub fn known_language_aliases() -> Vec<(&'static str, &'static str)> {
         .collect();
     pairs.sort_unstable_by(|a, b| a.0.cmp(b.0));
     pairs
+}
+
+pub fn known_custom_language_aliases() -> Vec<(String, String)> {
+    crate::aliases::list_custom_aliases()
 }

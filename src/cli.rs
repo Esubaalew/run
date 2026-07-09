@@ -83,6 +83,13 @@ pub enum CacheAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AliasAction {
     List,
+    Add {
+        alias: String,
+        language: String,
+    },
+    Remove {
+        alias: String,
+    },
 }
 
 pub fn parse() -> Result<Command> {
@@ -478,16 +485,28 @@ fn parse_subcommand(args: &mut Vec<String>, lang: Option<&str>) -> Result<Option
                     if !args.is_empty() {
                         args.remove(0);
                     }
+                    ensure!(args.is_empty(), "unexpected arguments after alias list");
                     AliasAction::List
                 }
-                Some("add") | Some("set") | Some("remove") | Some("rm") | Some("delete") => {
-                    anyhow::bail!(
-                        "custom language aliases are not supported yet; use `run alias list` to view built-in aliases"
-                    )
+                Some("add") | Some("set") => {
+                    args.remove(0);
+                    ensure!(
+                        args.len() == 2,
+                        "alias add requires <alias> <language>"
+                    );
+                    let alias = args.remove(0);
+                    let language = args.remove(0);
+                    AliasAction::Add { alias, language }
+                }
+                Some("remove") | Some("rm") | Some("delete") => {
+                    args.remove(0);
+                    ensure!(!args.is_empty(), "alias remove requires an alias name");
+                    ensure!(args.len() == 1, "alias remove accepts exactly one alias name");
+                    let alias = args.remove(0);
+                    AliasAction::Remove { alias }
                 }
                 Some(other) => anyhow::bail!("unknown alias action '{other}'"),
             };
-            ensure!(args.is_empty(), "unexpected arguments after alias command");
             Ok(Some(Command::Alias { action }))
         }
         "watch" => {
@@ -579,7 +598,9 @@ Workflow commands:
   run cache --stats          Show persistent build cache usage
   run cache --clear          Clear all persistent build cache entries
   run cache --clear-lang L   Clear cache entries for one language
-  run alias list             List built-in language aliases
+  run alias list             List built-in and custom language aliases
+  run alias add A LANG       Add a custom alias (saved to config)
+  run alias remove A         Remove a custom alias
   run fmt <file>             Format a file in place
   run snippet <lang> <name>  Print a curated offline snippet template
   run snippet <lang> --list  List templates for a language

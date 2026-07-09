@@ -61,6 +61,8 @@ pub struct BuildConfig {
     pub reproducible: bool,
 
     pub source_date_epoch: Option<u64>,
+
+    pub target: String,
 }
 
 impl Default for BuildConfig {
@@ -71,6 +73,7 @@ impl Default for BuildConfig {
             wit_dir: None,
             reproducible: false,
             source_date_epoch: None,
+            target: "wasm32-wasip1".to_string(),
         }
     }
 }
@@ -83,6 +86,7 @@ impl BuildConfig {
             wit_dir: None,
             reproducible: config.build.reproducible,
             source_date_epoch: config.build.source_date_epoch,
+            target: config.build.target.clone(),
         })
     }
 }
@@ -199,7 +203,7 @@ impl ComponentBuilder {
         } else {
             "debug"
         };
-        let target_dir = source_dir.join(format!("target/wasm32-wasip1/{}", profile));
+        let target_dir = source_dir.join(format!("target/{}/{}", self.config.target, profile));
 
         let wasm_name = get_rust_crate_name(source_dir)?.replace('-', "_");
 
@@ -389,7 +393,7 @@ impl ComponentBuilder {
         let mut cmd = Command::new("zig");
         cmd.args([
             "build",
-            "-Dtarget=wasm32-wasip1",
+            &format!("-Dtarget={}", self.config.target),
             &format!("-Doptimize={}", optimize),
         ]);
         cmd.current_dir(source_dir);

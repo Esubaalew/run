@@ -1,5 +1,6 @@
 # Run Toolchain Lockfile
-# Ensures hermetic, reproducible builds across machines
+# Ensures hermetic, reproducible builds across machines.
+# Populate sha256 hashes with: run v2 toolchain sync
 
 version = "1"
 
@@ -7,32 +8,32 @@ version = "1"
 
 [toolchains.cargo-component]
 version = "0.13.2"
-sha256 = "placeholder-for-actual-hash"
+sha256 = ""
 source = "https://github.com/bytecodealliance/cargo-component/releases/download/v0.13.2"
 
 [toolchains.componentize-py]
 version = "0.13.3"
-sha256 = "placeholder-for-actual-hash"
+sha256 = ""
 source = "https://github.com/bytecodealliance/componentize-py/releases/tag/v0.13.3"
 
 [toolchains.jco]
 version = "1.4.0"
-sha256 = "placeholder-for-actual-hash"
+sha256 = ""
 source = "https://github.com/bytecodealliance/jco/releases/tag/v1.4.0"
 
 [toolchains.tinygo]
 version = "0.32.0"
-sha256 = "placeholder-for-actual-hash"
+sha256 = ""
 source = "https://github.com/tinygo-org/tinygo/releases/tag/v0.32.0"
 
 [toolchains.wasm-tools]
 version = "1.210.0"
-sha256 = "placeholder-for-actual-hash"
+sha256 = ""
 source = "https://github.com/bytecodealliance/wasm-tools/releases/tag/v1.210.0"
 
 [toolchains.wasmtime]
 version = "25.0.0"
-sha256 = "placeholder-for-actual-hash"
+sha256 = ""
 source = "https://github.com/bytecodealliance/wasmtime/releases/tag/v25.0.0"
 
 [build]

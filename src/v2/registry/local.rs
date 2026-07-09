@@ -167,7 +167,7 @@ impl LocalRegistry {
                     features: vec![],
                 })
                 .collect(),
-            targets: vec!["wasm32-wasip2".to_string()],
+            targets: vec!["wasm32-wasip1".to_string()],
             license: metadata.license,
             repository: metadata.repository,
             size: std::fs::metadata(version_dir.join("component.wasm"))

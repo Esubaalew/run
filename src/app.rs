@@ -414,6 +414,29 @@ fn alias_command(action: AliasAction) -> Result<i32> {
             for (alias, language) in crate::language::known_language_aliases() {
                 println!("{alias:<16} {language}");
             }
+
+            let custom = crate::language::known_custom_language_aliases();
+            if !custom.is_empty() {
+                println!();
+                println!(
+                    "Custom aliases ({})",
+                    crate::aliases::config_path().display()
+                );
+                println!("{:<16} Language", "Alias");
+                println!("────────────────────────");
+                for (alias, language) in custom {
+                    println!("{alias:<16} {language}");
+                }
+            }
+            Ok(0)
+        }
+        AliasAction::Add { alias, language } => {
+            let registry = LanguageRegistry::bootstrap();
+            crate::aliases::add_alias(&alias, &language, &registry)?;
+            Ok(0)
+        }
+        AliasAction::Remove { alias } => {
+            crate::aliases::remove_alias(&alias)?;
             Ok(0)
         }
     }
@@ -782,20 +805,8 @@ fn html_escape(text: &str) -> String {
 }
 
 fn language_from_path(path: &Path) -> Option<&'static str> {
-    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-    match ext.as_str() {
-        "py" | "pyw" => Some("python"),
-        "js" | "jsx" | "mjs" | "cjs" => Some("javascript"),
-        "ts" | "tsx" => Some("typescript"),
-        "rs" => Some("rust"),
-        "go" => Some("go"),
-        "c" | "h" => Some("c"),
-        "cc" | "cpp" | "cxx" | "hpp" | "hxx" => Some("cpp"),
-        "java" => Some("java"),
-        "rb" => Some("ruby"),
-        "sh" | "bash" | "zsh" => Some("bash"),
-        _ => None,
-    }
+    let ext = path.extension()?.to_str()?;
+    crate::engine::language_from_extension(&ext.to_ascii_lowercase())
 }
 
 fn toolchain_name(language: &str) -> &'static str {

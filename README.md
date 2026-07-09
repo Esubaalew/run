@@ -52,6 +52,16 @@
 
 ---
 
+## What's New in 0.10
+
+- **Custom language aliases** — `run alias add`, `run alias remove`, persisted in `~/.config/run-kit/aliases.toml`. See the [aliases docs](https://run.esubalew.et/docs/advanced/aliases/).
+- **`run fmt` / `run share`** now detect all 25 languages by file extension (Kotlin, Swift, Dart, etc.), not just a subset.
+- **Run 2.0 CI** — v2 feature builds and tests run in GitHub Actions.
+- **WASI target alignment** — `wasm32-wasip1` used consistently across build, deploy, and registry metadata.
+- **Toolchain lockfile** — `run.lock.toml` placeholder hashes removed; run `run v2 toolchain sync` to populate.
+
+---
+
 ## What's New in 0.9
 
 - Toolchain-aware blake3 build cache under the platform cache directory with `run cache --stats` and `run cache --clear`.
@@ -85,7 +95,6 @@ See [Run 2.0 Documentation](#run-20---wasi-component-runtime) below for details.
 
 - [Website and Docs](#website-and-docs)
 - [Overview](#overview---universal-multi-language-runner)
-  - [What is run?](#what-is-run)
   - [Who is this for?](#who-is-this-for)
   - [Why was run created?](#why-was-run-created)
   - [Why Rust?](#why-rust)
@@ -118,6 +127,7 @@ The official website and full documentation are available here:
 
 - Website: https://run.esubalew.et/
 - Docs Overview: https://run.esubalew.et/docs/overview
+- Docs source: https://github.com/esubaalew/run-docs
 
 Use these links to explore features, language guides, and detailed examples.
 
@@ -361,6 +371,9 @@ run examples/rust/hello.rs
 | `run cache --stats` | Show persistent build cache usage |
 | `run cache --clear` | Clear the persistent build cache |
 | `run share <file> [--port N]` | Serve a local highlighted HTML view of a file |
+| `run alias list` | List built-in and custom language aliases |
+| `run alias add A LANG` | Add a custom alias (saved to config) |
+| `run alias remove A` | Remove a custom alias |
 | `--lang`, `-l` | Specify the programming language |
 | `--code`, `-c` | Provide code as a string |
 | `--json` | Emit stdout/stderr/exit/duration as a JSON envelope |

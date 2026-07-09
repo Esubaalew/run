@@ -538,8 +538,18 @@ impl LanguageRegistry {
         registry.register_language(CrystalEngine::new());
         registry.register_language(ZigEngine::new());
         registry.register_language(NimEngine::new());
+        registry.apply_custom_aliases(&crate::aliases::load_custom_aliases());
 
         registry
+    }
+
+    /// Merge user-defined aliases from `aliases.toml` into the lookup table.
+    pub fn apply_custom_aliases(&mut self, custom: &std::collections::BTreeMap<String, String>) {
+        for (alias, lang) in custom {
+            if self.engines.contains_key(lang) {
+                self.alias_lookup.insert(alias.clone(), lang.clone());
+            }
+        }
     }
 
     pub fn register_language<E>(&mut self, engine: E)
@@ -709,7 +719,7 @@ pub fn detect_language_for_source(
         && let Some(ext) = path.extension().and_then(|e| e.to_str())
     {
         let ext_lower = ext.to_ascii_lowercase();
-        if let Some(lang) = extension_to_language(&ext_lower) {
+        if let Some(lang) = language_from_extension(&ext_lower) {
             let spec = LanguageSpec::new(lang);
             if registry.resolve(&spec).is_some() {
                 return Some(spec);
@@ -729,7 +739,8 @@ pub fn detect_language_for_source(
     None
 }
 
-fn extension_to_language(ext: &str) -> Option<&'static str> {
+/// Map a file extension (without dot) to a canonical language id.
+pub fn language_from_extension(ext: &str) -> Option<&'static str> {
     match ext {
         "py" | "pyw" => Some("python"),
         "rs" => Some("rust"),

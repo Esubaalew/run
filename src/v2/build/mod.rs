@@ -174,6 +174,7 @@ pub fn build_and_publish(
         wit_dir: find_wit_dir(path).ok(),
         reproducible: false,
         source_date_epoch: None,
+        target: "wasm32-wasip1".to_string(),
     };
 
     let builder = ComponentBuilder::new(config);
