@@ -304,9 +304,13 @@ mod tests {
         assert_eq!(config.host, "127.0.0.1");
     }
 
+    fn empty_status() -> Vec<ComponentStatus> {
+        Vec::new()
+    }
+
     #[test]
     fn test_dev_server_url() {
-        let server = DevServer::new(DevServerConfig::default(), Arc::new(|| Vec::new()));
+        let server = DevServer::new(DevServerConfig::default(), Arc::new(empty_status));
         assert_eq!(server.url(), "http://127.0.0.1:3000");
     }
 }

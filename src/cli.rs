@@ -83,13 +83,8 @@ pub enum CacheAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AliasAction {
     List,
-    Add {
-        alias: String,
-        language: String,
-    },
-    Remove {
-        alias: String,
-    },
+    Add { alias: String, language: String },
+    Remove { alias: String },
 }
 
 pub fn parse() -> Result<Command> {
@@ -490,10 +485,7 @@ fn parse_subcommand(args: &mut Vec<String>, lang: Option<&str>) -> Result<Option
                 }
                 Some("add") | Some("set") => {
                     args.remove(0);
-                    ensure!(
-                        args.len() == 2,
-                        "alias add requires <alias> <language>"
-                    );
+                    ensure!(args.len() == 2, "alias add requires <alias> <language>");
                     let alias = args.remove(0);
                     let language = args.remove(0);
                     AliasAction::Add { alias, language }
@@ -501,7 +493,10 @@ fn parse_subcommand(args: &mut Vec<String>, lang: Option<&str>) -> Result<Option
                 Some("remove") | Some("rm") | Some("delete") => {
                     args.remove(0);
                     ensure!(!args.is_empty(), "alias remove requires an alias name");
-                    ensure!(args.len() == 1, "alias remove accepts exactly one alias name");
+                    ensure!(
+                        args.len() == 1,
+                        "alias remove accepts exactly one alias name"
+                    );
                     let alias = args.remove(0);
                     AliasAction::Remove { alias }
                 }

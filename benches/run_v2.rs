@@ -11,7 +11,7 @@ fn minimal_wasm_bytes() -> Vec<u8> {
 fn bench_cold_start(c: &mut Criterion) {
     c.bench_function("v2_cold_start_load", |b| {
         b.iter_batched(
-            || minimal_wasm_bytes(),
+            minimal_wasm_bytes,
             |bytes| {
                 let mut engine = RuntimeEngine::new(RuntimeConfig::production()).unwrap();
                 let _ = engine

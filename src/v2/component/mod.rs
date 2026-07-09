@@ -213,10 +213,10 @@ mod tests {
     #[test]
     fn test_component_builder() {
         let runtime = Arc::new(Mutex::new(RuntimeEngine::default_engine().unwrap()));
-        let _builder = ComponentBuilder::new(runtime)
+        let builder = ComponentBuilder::new(runtime)
             .with_capability(Capability::Stdout)
             .with_capability(Capability::Clock);
 
-        assert!(true);
+        drop(builder);
     }
 }

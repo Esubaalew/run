@@ -66,9 +66,7 @@ fn validate_alias_name(alias: &str) -> Result<String> {
         bail!("alias name cannot contain whitespace");
     }
     if builtin_alias_lookup(&normalized).is_some() {
-        bail!(
-            "alias '{normalized}' is reserved by a built-in alias; choose a different name"
-        );
+        bail!("alias '{normalized}' is reserved by a built-in alias; choose a different name");
     }
     Ok(normalized)
 }
@@ -76,9 +74,7 @@ fn validate_alias_name(alias: &str) -> Result<String> {
 fn validate_language_target(language: &str, registry: &LanguageRegistry) -> Result<String> {
     let spec = crate::language::LanguageSpec::new(language.to_string());
     let Some(engine) = registry.resolve(&spec) else {
-        bail!(
-            "unknown language '{language}'. Run `run doctor` to see supported languages."
-        );
+        bail!("unknown language '{language}'. Run `run doctor` to see supported languages.");
     };
     Ok(engine.id().to_string())
 }
@@ -110,9 +106,7 @@ pub fn remove_alias(alias: &str) -> Result<()> {
 }
 
 pub fn list_custom_aliases() -> Vec<(String, String)> {
-    load_custom_aliases()
-        .into_iter()
-        .collect::<Vec<_>>()
+    load_custom_aliases().into_iter().collect::<Vec<_>>()
 }
 
 #[cfg(test)]
@@ -134,10 +128,7 @@ mod tests {
             let registry = LanguageRegistry::bootstrap();
             add_alias("p", "python", &registry).expect("add");
             assert!(path.is_file());
-            assert_eq!(
-                custom_alias_lookup("p").as_deref(),
-                Some("python")
-            );
+            assert_eq!(custom_alias_lookup("p").as_deref(), Some("python"));
 
             remove_alias("p").expect("remove");
             assert!(custom_alias_lookup("p").is_none());

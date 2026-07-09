@@ -195,7 +195,7 @@ mod integration_tests {
 
     #[test]
     fn test_orchestrator_event_variants() {
-        let events = vec![
+        let events = [
             OrchestratorEvent::ComponentStarted {
                 id: "test".to_string(),
             },

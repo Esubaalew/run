@@ -114,8 +114,7 @@ static ALIASES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
 });
 
 pub fn canonical_language_id(token: &str) -> String {
-    resolve_language_alias(token)
-        .unwrap_or_else(|| token.trim().to_ascii_lowercase())
+    resolve_language_alias(token).unwrap_or_else(|| token.trim().to_ascii_lowercase())
 }
 
 /// Resolve a token to a canonical language id using custom then built-in aliases.

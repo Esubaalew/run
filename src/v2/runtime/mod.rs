@@ -390,7 +390,10 @@ mod tests {
         }
 
         match ComponentValue::parse("3.14").unwrap() {
-            ComponentValue::F64(v) => assert!((v - 3.14).abs() < 1e-9),
+            ComponentValue::F64(v) => {
+                let expected: f64 = 314.0 / 100.0;
+                assert!((v - expected).abs() < 1e-9);
+            }
             other => panic!("unexpected value: {:?}", other),
         }
 

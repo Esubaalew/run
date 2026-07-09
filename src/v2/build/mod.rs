@@ -134,31 +134,6 @@ fn run_custom_build(command: &str, base_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_detect_language_by_extension() {
-        let dir = tempdir().unwrap();
-        let wasm_path = dir.path().join("comp.wasm");
-        std::fs::write(&wasm_path, b"").unwrap();
-        assert_eq!(detect_language(&wasm_path).unwrap(), Language::Wasm);
-
-        let js_path = dir.path().join("index.js");
-        std::fs::write(&js_path, b"").unwrap();
-        assert_eq!(detect_language(&js_path).unwrap(), Language::JavaScript);
-    }
-
-    #[test]
-    fn test_detect_language_by_project_files() {
-        let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join("go.mod"), b"module test").unwrap();
-        assert_eq!(detect_language(dir.path()).unwrap(), Language::Go);
-    }
-}
-
 pub fn build_and_publish(
     path: &Path,
     name: &str,
@@ -216,4 +191,29 @@ fn find_wit_dir(path: &Path) -> Result<PathBuf> {
         "WIT directory not found near {}",
         path.display()
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_detect_language_by_extension() {
+        let dir = tempdir().unwrap();
+        let wasm_path = dir.path().join("comp.wasm");
+        std::fs::write(&wasm_path, b"").unwrap();
+        assert_eq!(detect_language(&wasm_path).unwrap(), Language::Wasm);
+
+        let js_path = dir.path().join("index.js");
+        std::fs::write(&js_path, b"").unwrap();
+        assert_eq!(detect_language(&js_path).unwrap(), Language::JavaScript);
+    }
+
+    #[test]
+    fn test_detect_language_by_project_files() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("go.mod"), b"module test").unwrap();
+        assert_eq!(detect_language(dir.path()).unwrap(), Language::Go);
+    }
 }
