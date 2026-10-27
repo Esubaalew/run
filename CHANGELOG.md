@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file. The format 
 
 Nothing yet.
 
+## [0.10.1] - 2026-10-26
+
+### Changed
+
+- Crate author and Debian package maintainer contact now uses `hi@esubalew.et` instead of a personal Gmail address.
+
 ## [0.10.0] - 2026-07-09
 
 ### Added
@@ -233,7 +239,8 @@ Nothing yet.
 - `-c/--code` and `-f/--file` flags are accepted immediately after the language selector without consuming snippet text.
 - Added regression coverage ensuring `run python -c` continues to consume piped input in future releases.
 
-[Unreleased]: https://github.com/esubaalew/run/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/esubaalew/run/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/esubaalew/run/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/esubaalew/run/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/esubaalew/run/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/esubaalew/run/compare/v0.8.0...v0.9.0

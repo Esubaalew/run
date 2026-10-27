@@ -1,12 +1,12 @@
 [package]
 name = "run-kit"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2024"
 description = "Universal multi-language runner and smart REPL"
 license = "Apache-2.0"
 repository = "https://github.com/esubaalew/run"
 readme = "README.md"
-authors = ["Esubalew Chekol <esubalewchekol6@gmail.com>"]
+authors = ["Esubalew Chekol <hi@esubalew.et>"]
 homepage = "https://esubalew.et"
 documentation = "https://run.esubalew.et"
 
@@ -18,7 +18,7 @@ name = "run"
 path = "src/main.rs"
 
 [package.metadata.deb]
-maintainer = "Esubalew Chekol <esubalewchekol6@gmail.com>"
+maintainer = "Esubalew Chekol <hi@esubalew.et>"
 depends = "libc6 (>= 2.31)"
 section = "utils"
 priority = "optional"
