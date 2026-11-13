@@ -190,3 +190,105 @@ fn default_timeout_is_unlimited() {
         .success()
         .stdout(predicate::str::contains("no-timeout"));
 }
+
+#[test]
+fn execution_handles_large_stdout_without_pipe_deadlock() {
+    if !python_available() {
+        return;
+    }
+
+    // Emit 100KB of stdout, exceeding standard 64KB OS pipe buffers.
+    let output = run_binary()
+        .args([
+            "--timeout",
+            "5",
+            "python",
+            "-c",
+            "import sys; sys.stdout.write('A' * 100000)",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert_eq!(output.len(), 100000);
+    assert!(output.iter().all(|&b| b == b'A'));
+}
+
+#[test]
+fn execution_handles_large_stderr_without_pipe_deadlock() {
+    if !python_available() {
+        return;
+    }
+
+    // Emit 100KB of stderr, exceeding standard 64KB OS pipe buffers.
+    let output = run_binary()
+        .args([
+            "--timeout",
+            "5",
+            "python",
+            "-c",
+            "import sys; sys.stderr.write('B' * 100000)",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stderr
+        .clone();
+
+    // Verify all 100,000 'B' bytes were captured without truncation
+    let b_count = output.iter().filter(|&&b| b == b'B').count();
+    assert_eq!(b_count, 100000);
+}
+
+#[test]
+fn execution_handles_simultaneous_large_stdout_and_stderr() {
+    if !python_available() {
+        return;
+    }
+
+    let output = run_binary()
+        .args([
+            "--timeout",
+            "5",
+            "python",
+            "-c",
+            "import sys; sys.stdout.write('X' * 100000); sys.stderr.write('Y' * 100000)",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    assert_eq!(output.stdout.len(), 100000);
+    assert!(output.stdout.iter().all(|&b| b == b'X'));
+
+    let y_count = output.stderr.iter().filter(|&&b| b == b'Y').count();
+    assert_eq!(y_count, 100000);
+}
+
+#[test]
+fn execution_near_deadline_preserves_complete_output() {
+    if !python_available() {
+        return;
+    }
+
+    // A process writing output right before completion preserves full output without truncation.
+    let output = run_binary()
+        .args([
+            "--timeout",
+            "5",
+            "python",
+            "-c",
+            "import sys; sys.stdout.write('Z' * 100000)",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert_eq!(output.len(), 100000);
+    assert!(output.iter().all(|&b| b == b'Z'));
+}

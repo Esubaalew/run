@@ -26,6 +26,7 @@ mod zig;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -216,30 +217,75 @@ pub fn execution_timeout() -> Duration {
     Duration::from_secs(secs)
 }
 
+fn spawn_reader<R: Read + Send + 'static>(
+    pipe: Option<R>,
+    name: &'static str,
+) -> Option<std::thread::JoinHandle<std::io::Result<Vec<u8>>>> {
+    pipe.map(|mut r| {
+        std::thread::Builder::new()
+            .name(name.into())
+            .spawn(move || {
+                let mut buf = Vec::new();
+                r.read_to_end(&mut buf)?;
+                Ok(buf)
+            })
+            .expect("failed to spawn pipe reader thread")
+    })
+}
+
 /// Wait for a child process with a timeout. Kills the process if it exceeds the limit.
 /// Returns the Output on success, or an error on timeout.
 pub fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<std::process::Output> {
-    let start = Instant::now();
-    let poll_interval = Duration::from_millis(50);
+    // Spawn reader threads to drain stdout and stderr concurrently, preventing
+    // the child process from blocking on full OS pipe buffers (>64KB).
+    let stdout_handle = spawn_reader(child.stdout.take(), "stdout-reader");
+    let stderr_handle = spawn_reader(child.stderr.take(), "stderr-reader");
 
-    loop {
+    let start = Instant::now();
+    let poll_interval = Duration::from_millis(10);
+
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_status)) => {
-                return child.wait_with_output().map_err(Into::into);
-            }
+            Ok(Some(status)) => break status,
             Ok(None) => {
-                if timeout.as_secs() > 0 && start.elapsed() > timeout {
+                if !timeout.is_zero() && start.elapsed() > timeout {
                     let _ = child.kill();
                     let _ = child.wait(); // reap
-                    bail!("Execution timed out after {}s", timeout.as_secs());
+                    bail!(
+                        "Execution timed out after {}",
+                        if timeout.as_secs() > 0 {
+                            format!("{}s", timeout.as_secs())
+                        } else {
+                            format!("{:?}", timeout)
+                        }
+                    );
                 }
                 std::thread::sleep(poll_interval);
             }
-            Err(e) => {
-                return Err(e.into());
-            }
+            Err(e) => return Err(e.into()),
         }
-    }
+    };
+
+    // Child process exited within the timeout limit. Join the reader threads
+    // to collect complete stdout and stderr without truncation.
+    let stdout = match stdout_handle {
+        Some(h) => h
+            .join()
+            .map_err(|_| anyhow::anyhow!("stdout reader thread panicked"))??,
+        None => Vec::new(),
+    };
+    let stderr = match stderr_handle {
+        Some(h) => h
+            .join()
+            .map_err(|_| anyhow::anyhow!("stderr reader thread panicked"))??,
+        None => Vec::new(),
+    };
+
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 pub use bash::BashEngine;
